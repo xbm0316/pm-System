@@ -15,11 +15,10 @@ interface Props {
   requirements: Requirement[]
   onAdd: (r: Requirement) => void
   onOpenTrack: (reqId: string) => void
+  onDelete: (reqId: string) => void
   activeReqId: string | null
   openSignal: number
   searchQuery?: string
-  variant?: 'pool' | 'prd'
-  onOpenPrd?: (reqId: string, mode: 'view' | 'edit') => void
 }
 
 interface MiniScrollbarProps {
@@ -107,8 +106,8 @@ interface StatusGroupProps {
   items: Requirement[]
   activeReqId: string | null
   onOpenTrack: (reqId: string) => void
-  variant: 'pool' | 'prd'
-  onOpenPrd?: (reqId: string, mode: 'view' | 'edit') => void
+  onRequestDelete: (req: Requirement) => void
+  onAddChild: (version: string) => void
 }
 
 function versionParts(version: string) {
@@ -128,7 +127,7 @@ function compareRequirements(a: Requirement, b: Requirement) {
   return b.createdAt - a.createdAt
 }
 
-function StatusGroup({ status, items, activeReqId, onOpenTrack, variant, onOpenPrd }: StatusGroupProps) {
+function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete, onAddChild }: StatusGroupProps) {
   const bodyRef = useRef<HTMLDivElement>(null)
 
   return (
@@ -142,50 +141,36 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, variant, onOpenP
           {items.length === 0 ? (
             <div className="status-group__empty">暂无需求</div>
           ) : items.map((r) => (
-            <div
-              key={r.id}
-              className={`req-card${activeReqId === r.id ? ' req-card--selected' : ''}`}
-              onClick={() => variant === 'prd' ? onOpenPrd?.(r.id, 'edit') : onOpenTrack(r.id)}
-              onKeyDown={(event) => {
-                if (variant === 'prd') return
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  onOpenTrack(r.id)
-                }
-              }}
-              role={variant === 'prd' ? 'group' : 'button'}
-              tabIndex={variant === 'prd' ? undefined : 0}
-              aria-pressed={variant === 'prd' ? undefined : activeReqId === r.id}
-              aria-label={`${r.name}，${variant === 'prd' ? '打开 PRD' : '查看需求追踪'}`}
-            >
-              <div className="req-card__top">
-                <span className="req-card__ver">{r.version}</span>
-                <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
+            <div className="req-card-wrap" key={r.id}>
+              <div
+                className={`req-card${activeReqId === r.id ? ' req-card--selected' : ''}`}
+                onClick={() => onOpenTrack(r.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onOpenTrack(r.id)
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-pressed={activeReqId === r.id}
+                aria-label={`${r.name}，查看需求追踪`}
+              >
+                <div className="req-card__top">
+                  <span className="req-card__ver">{r.version}</span>
+                  <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
+                </div>
+                <div className="req-card__name">{r.name}</div>
+                {r.content && <div className="req-card__content">{r.content}</div>}
               </div>
-              <div className="req-card__name">{r.name}</div>
-              {r.content && <div className="req-card__content">{r.content}</div>}
-              {variant === 'prd' && (
-                <span className="req-card__actions" onClick={(event) => event.stopPropagation()}>
-                  <button
-                    type="button"
-                    className="req-card__action"
-                    title="查看 PRD"
-                    aria-label={`查看 ${r.name} 的 PRD`}
-                    onClick={() => onOpenPrd?.(r.id, 'view')}
-                  >
-                    <span className="icon-circle"><Icon name="eye" size={13} /></span>
-                  </button>
-                  <button
-                    type="button"
-                    className="req-card__action"
-                    title="编辑 PRD"
-                    aria-label={`编辑 ${r.name} 的 PRD`}
-                    onClick={() => onOpenPrd?.(r.id, 'edit')}
-                  >
-                    <span className="icon-circle"><Icon name="edit" size={13} /></span>
-                  </button>
-                </span>
-              )}
+              <div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}>
+                <button type="button" className="req-card__add" onClick={() => onAddChild(r.version)} title={`基于 ${r.version} 新增需求`} aria-label={`基于 ${r.version} 新增需求`}>
+                  <Icon name="plus" size={14} />
+                </button>
+                <button type="button" className="req-card__delete" onClick={() => onRequestDelete(r)} title={`删除 ${r.name}`} aria-label={`删除 ${r.name}`}>
+                  <span className="icon-circle"><Icon name="trash" size={13} /></span>
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -195,20 +180,24 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, variant, onOpenP
   )
 }
 
-export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, activeReqId, openSignal, searchQuery = '', variant = 'pool', onOpenPrd }: Props) {
+export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onDelete, activeReqId, openSignal, searchQuery = '' }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [version, setVersion] = useState('V')
   const [name, setName] = useState('')
   const [content, setContent] = useState('')
   const [priority, setPriority] = useState<Priority>('P1')
   const [attachments, setAttachments] = useState<RequirementAttachment[]>([])
+  const [deleteTarget, setDeleteTarget] = useState<Requirement | null>(null)
 
   const consumedSignal = useRef(openSignal)
 
   useEffect(() => {
     if (openSignal !== consumedSignal.current) {
       consumedSignal.current = openSignal
-      if (openSignal > 0) setShowForm(true)
+      if (openSignal > 0) {
+        setVersion('V')
+        setShowForm(true)
+      }
     }
   }, [openSignal])
 
@@ -218,6 +207,24 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, act
     .filter((r) => !query || [r.name, r.content, r.version, r.priority, r.status].join(' ').toLocaleLowerCase().includes(query))
     .sort(compareRequirements)
   const groupsRef = useRef<HTMLDivElement>(null)
+
+  function nextChildVersion(parentVersion: string) {
+    const match = parentVersion.trim().match(/^v?(\d+(?:\.\d+)*)$/i)
+    if (!match) return `${parentVersion.trim() || 'V'}.1`
+    const base = match[1]
+    const prefix = new RegExp(`^v?${base.replace(/\./g, '\\.')}(?:\\.(\\d+))$`, 'i')
+    const max = requirements
+      .filter((requirement) => requirement.spaceId === spaceId)
+      .map((requirement) => requirement.version.match(prefix)?.[1])
+      .filter(Boolean)
+      .reduce((current, value) => Math.max(current, Number(value)), 0)
+    return `V${base}.${max + 1}`
+  }
+
+  function openCreate(prefillVersion = 'V') {
+    setVersion(prefillVersion)
+    setShowForm(true)
+  }
 
   function submit() {
     if (!name.trim()) return
@@ -283,8 +290,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, act
               items={list.filter((r) => r.status === st)}
               activeReqId={activeReqId}
               onOpenTrack={onOpenTrack}
-              variant={variant}
-              onOpenPrd={onOpenPrd}
+              onRequestDelete={setDeleteTarget}
+              onAddChild={(parentVersion) => openCreate(nextChildVersion(parentVersion))}
             />
           ))}
         </div>
@@ -398,6 +405,18 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, act
               >
                 创建
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteTarget && (
+        <div className="overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal__title">确认删除需求？</div>
+            <div className="delete-confirm-modal__text">删除「{deleteTarget.name}」后，对应的需求追踪、PRD 和复盘记录也会一并移除。</div>
+            <div className="modal__actions">
+              <button className="btn-ghost" type="button" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="btn-primary btn-primary--danger" type="button" onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null) }}>确认删除</button>
             </div>
           </div>
         </div>

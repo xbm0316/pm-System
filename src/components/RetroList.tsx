@@ -35,7 +35,7 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
           {!query && <div className="empty__hint">需求状态变为「已上线」后出现在这里</div>}
         </div>
       ) : (
-        <div className="comp-grid">
+        <div className="comp-grid retro-grid">
           {list.map((r) => {
             const cnt = retros.filter((x) => x.reqId === r.id).length
             return (

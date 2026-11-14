@@ -38,6 +38,63 @@ export interface Requirement {
   createdAt: number
   attachments?: RequirementAttachment[]
   prd?: RequirementPrd
+  competitorIds?: string[]
+  meetings?: MeetingRecord[]
+}
+
+export interface MeetingRecord {
+  id: string
+  title: string
+  date: string
+  content: string
+}
+
+export interface Project {
+  id: string
+  spaceId: string
+  name: string
+  createdAt: number
+  archivedAt?: number
+}
+
+export type ProjectIssueStatus = '待处理' | '处理中' | '已解决'
+
+export interface ProjectIssue {
+  id: string
+  taskId: string
+  title: string
+  description: string
+  status: ProjectIssueStatus
+  createdAt: number
+}
+
+export interface ProjectTaskAttachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  url: string
+  kind: 'image' | 'file'
+}
+
+export interface ProjectTask {
+  id: string
+  projectId: string
+  name: string
+  content: string
+  priority: Priority
+  status: RequirementStatus
+  createdAt: number
+  detail: string
+  startDate?: string
+  endDate?: string
+  attachments?: ProjectTaskAttachment[]
+}
+
+export interface ProjectStore {
+  projects: Project[]
+  tasks: ProjectTask[]
+  issues: ProjectIssue[]
 }
 
 export interface PrdTableRow {
@@ -73,6 +130,7 @@ export interface Competitor {
   spaceId: string
   name: string
   url: string
+  description?: string
   createdAt: number
 }
 
@@ -93,8 +151,6 @@ export const MENUS: Record<TypeName, MenuDef[]> = {
   产品经理: [
     { key: 'req', label: '需求池', icon: 'doc' },
     { key: 'comp', label: '竞品分析', icon: 'trend' },
-    { key: 'prd', label: '需求PRD', icon: 'grid' },
-    { key: 'retro', label: '复盘记录', icon: 'clock' },
   ],
   项目经理: [
     { key: 'proj', label: '项目列表', icon: 'grid' },

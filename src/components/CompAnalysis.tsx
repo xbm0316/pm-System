@@ -26,7 +26,7 @@ export default function CompAnalysis({ spaceId, competitors, onAdd, openSignal, 
   const query = searchQuery.trim().toLocaleLowerCase()
   const list = competitors
     .filter((c) => c.spaceId === spaceId)
-    .filter((c) => !query || [c.name, c.url].join(' ').toLocaleLowerCase().includes(query))
+    .filter((c) => !query || [c.name, c.url, c.description].filter(Boolean).join(' ').toLocaleLowerCase().includes(query))
     .sort((a, b) => b.createdAt - a.createdAt)
 
   function submit() {

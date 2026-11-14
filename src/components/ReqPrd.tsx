@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import { uid, type PrdOptionalSection, type PrdTableRow, type Requirement, type RequirementPrd } from '../lib/store'
 
-interface Props { requirement: Requirement; mode: 'view' | 'edit'; onClose: () => void; onSave: (prd: RequirementPrd) => void }
+interface Props { requirement: Requirement; mode: 'view' | 'edit'; onClose: () => void; onSave: (prd: RequirementPrd) => void; embedded?: boolean }
 const OPTIONAL_SECTIONS: Array<{ key: PrdOptionalSection; label: string; icon: string }> = [
   { key: 'competitor', label: '竞品分析', icon: 'trend' },
   { key: 'business-flow', label: '业务流程图', icon: 'grid' },
@@ -66,7 +66,7 @@ function EditableTable({ rows, editable, onUpdate, onAdd, onRemove, onReorder }:
   </>
 }
 
-export default function ReqPrd({ requirement, mode, onClose, onSave }: Props) {
+export default function ReqPrd({ requirement, mode, onClose, onSave, embedded = false }: Props) {
   const [editing, setEditing] = useState(mode === 'edit')
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [prd, setPrd] = useState<RequirementPrd>(() => requirement.prd || emptyPrd())
@@ -80,8 +80,8 @@ export default function ReqPrd({ requirement, mode, onClose, onSave }: Props) {
   function removeRow(id: string) { setPrd((current) => ({ ...current, contentRows: current.contentRows.length <= 1 ? [{ id: uid(), module: '', change: '', note: '' }] : current.contentRows.filter((row) => row.id !== id) })) }
   function reorderRows(from: string, to: string) { setPrd((current) => { const rows = [...current.contentRows]; const fromIndex = rows.findIndex((row) => row.id === from); const toIndex = rows.findIndex((row) => row.id === to); if (fromIndex < 0 || toIndex < 0) return current; const [moved] = rows.splice(fromIndex, 1); rows.splice(toIndex, 0, moved); return { ...current, contentRows: rows } }) }
   function save() { onSave({ ...prd, updatedAt: Date.now() }); setEditing(false); setShowAddMenu(false) }
-  return <div className="prd-page">
-    <header className="prd-page__header"><div><h2 className="prd-page__title"><span className="prd-page__version">{requirement.version}</span><span className="prd-page__title-text">{requirement.name}</span><span className={`pri prd-page__priority pri--${requirement.priority.toLowerCase()}`}>{requirement.priority}</span></h2></div><div className="prd-page__actions"><button className={`icon-btn${editing ? ' icon-btn--active' : ''}`} type="button" onClick={() => setEditing(true)} title="编辑 PRD" aria-label="编辑 PRD"><Icon name="edit" size={15} /></button><div className="prd-add-wrap"><button className={`icon-btn${showAddMenu ? ' icon-btn--active' : ''}`} type="button" onClick={() => editing && setShowAddMenu((value) => !value)} title="添加区块" aria-label="添加区块" aria-expanded={editing ? showAddMenu : undefined} disabled={!editing}><Icon name="plus" size={16} /></button>{showAddMenu && editing && <div className="prd-add-menu"><div className="prd-add-menu__title">显示区块</div>{OPTIONAL_SECTIONS.map((section) => <label className="prd-add-menu__item" key={section.key}><input type="checkbox" checked={prd.optionalSections.includes(section.key)} onChange={() => toggleOptionalSection(section.key)} /><Icon name={section.icon} size={14} /><span>{section.label}</span></label>)}</div>}</div><button className="icon-btn" type="button" onClick={onClose} title="关闭 PRD" aria-label="关闭 PRD"><Icon name="close" size={15} /></button></div></header>
+  return <div className={`prd-page${embedded ? ' prd-page--embedded' : ''}`}>
+    <header className="prd-page__header"><div>{!embedded && <h2 className="prd-page__title"><span className="prd-page__version">{requirement.version}</span><span className="prd-page__title-text">{requirement.name}</span><span className={`pri prd-page__priority pri--${requirement.priority.toLowerCase()}`}>{requirement.priority}</span></h2>}{embedded && <span className="prd-page__embedded-label">PRD 内容</span>}</div><div className="prd-page__actions"><button className={`icon-btn${editing ? ' icon-btn--active' : ''}`} type="button" onClick={() => setEditing(true)} title="编辑 PRD" aria-label="编辑 PRD"><Icon name="edit" size={15} /></button><div className="prd-add-wrap"><button className={`icon-btn${showAddMenu ? ' icon-btn--active' : ''}`} type="button" onClick={() => editing && setShowAddMenu((value) => !value)} title="添加区块" aria-label="添加区块" aria-expanded={editing ? showAddMenu : undefined} disabled={!editing}><Icon name="plus" size={16} /></button>{showAddMenu && editing && <div className="prd-add-menu"><div className="prd-add-menu__title">显示区块</div>{OPTIONAL_SECTIONS.map((section) => <label className="prd-add-menu__item" key={section.key}><input type="checkbox" checked={prd.optionalSections.includes(section.key)} onChange={() => toggleOptionalSection(section.key)} /><Icon name={section.icon} size={14} /><span>{section.label}</span></label>)}</div>}</div>{!embedded && <button className="icon-btn" type="button" onClick={onClose} title="关闭 PRD" aria-label="关闭 PRD"><Icon name="close" size={15} /></button>}</div></header>
     <div className="prd-page__body"><TextBlock label="需求背景" value={prd.background} editable={editing} placeholder="填写需求背景、用户问题和业务目标…" onChange={(value) => patchPrd({ background: value })} />
       {prd.optionalSections.includes('competitor') && <TextBlock label="竞品分析" value={prd.optionalContent.competitor || ''} editable={editing} placeholder="填写竞品观察、差异和借鉴点…" onChange={(value) => updateOptionalContent('competitor', value)} />}
       <section className="prd-section"><div className="prd-section__label">需求说明</div><RichEditor value={prd.explanation} editable={editing} placeholder="使用标题、列表和缩进整理需求说明…" onChange={(value) => patchPrd({ explanation: value })} /></section>

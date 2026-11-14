@@ -5,7 +5,14 @@ import {
   type Requirement,
   type RequirementStatus,
   type RequirementAttachment,
+  type Competitor,
+  type MeetingRecord,
+  uid,
 } from '../lib/store'
+
+function statusKey(status: RequirementStatus) {
+  return status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'
+}
 
 interface Props {
   spaceId: string
@@ -13,11 +20,17 @@ interface Props {
   onStatusChange: (reqId: string, status: RequirementStatus) => void
   focusId: string | null
   searchQuery?: string
+  competitors: Competitor[]
+  onUpdateMeetings: (reqId: string, meetings: MeetingRecord[]) => void
 }
 
-export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '' }: Props) {
+export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '', competitors, onUpdateMeetings }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [previewAttachment, setPreviewAttachment] = useState<RequirementAttachment | null>(null)
+  const [showMeetingForm, setShowMeetingForm] = useState(false)
+  const [meetingTitle, setMeetingTitle] = useState('')
+  const [meetingDate, setMeetingDate] = useState('')
+  const [meetingContent, setMeetingContent] = useState('')
 
   useEffect(() => {
     if (!previewAttachment) return
@@ -36,30 +49,31 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
   const detail = spaceList.find((r) => r.id === (detailId || focusId))
   const current = detail || (focusId ? spaceList.find((r) => r.id === focusId) : null)
 
+  function addMeeting(r: Requirement) {
+    if (!meetingTitle.trim() && !meetingContent.trim()) return
+    const meeting: MeetingRecord = { id: uid(), title: meetingTitle.trim() || '会议记录', date: meetingDate, content: meetingContent.trim() }
+    onUpdateMeetings(r.id, [...(r.meetings || []), meeting])
+    setMeetingTitle('')
+    setMeetingDate('')
+    setMeetingContent('')
+    setShowMeetingForm(false)
+  }
+
   if (detail || (focusId && current)) {
     const r = detail || current!
     const idx = REQ_STATUSES.indexOf(r.status)
+    const relatedCompetitors = r.competitorIds && r.competitorIds.length > 0
+      ? competitors.filter((competitor) => r.competitorIds?.includes(competitor.id))
+      : competitors.filter((competitor) => competitor.spaceId === spaceId)
     return (
       <>
         <div className="track-detail">
-        <div className="track-detail__head">
-          {detailId && (
-            <button className="track-detail__back" onClick={() => setDetailId(null)}>
-              ← 返回列表
-            </button>
-          )}
-          <span className="track-detail__ver">{r.version}</span>
-          <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
-        </div>
-
-        <div className="track-detail__name">{r.name}</div>
-
         <div className="progress">
           <div className="progress__track">
             {REQ_STATUSES.slice(0, -1).map((_, i) => (
               <div
                 key={`connector-${i}`}
-                className={`progress__connector${i < idx ? ' progress__connector--done' : ''}`}
+                className={`progress__connector progress__connector--${statusKey(REQ_STATUSES[i])}${i < idx ? ' progress__connector--done' : ''}`}
                 style={{ left: `${i * 25}%`, width: '25%' }}
               />
             ))}
@@ -68,7 +82,7 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
               return (
                 <div
                   key={st}
-                  className={`progress__node${i === 0 ? ' progress__node--first' : ''}${i === REQ_STATUSES.length - 1 ? ' progress__node--last' : ''}`}
+                  className={`progress__node progress__node--${statusKey(st)}${i === 0 ? ' progress__node--first' : ''}${i === REQ_STATUSES.length - 1 ? ' progress__node--last' : ''}`}
                   style={{ left: `${(i / (REQ_STATUSES.length - 1)) * 100}%` }}
                 >
                   <div className="progress__dot-wrap">
@@ -99,28 +113,41 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
           </div>
         )}
 
-        {r.attachments && r.attachments.length > 0 && (
-          <div className="track-detail__attachments">
-            <div className="field-label">附件</div>
+        <div className="track-detail__related">
+          <div className="field-label">关联竞品</div>
+          {relatedCompetitors.length > 0 ? (
+            <div className="track-related-list">
+              {relatedCompetitors.map((competitor) => (
+                <a className="track-related-item" href={competitor.url || undefined} target={competitor.url ? '_blank' : undefined} rel="noreferrer" key={competitor.id}>
+                  <span>{competitor.name}</span>
+                  {competitor.url && <small>{competitor.url}</small>}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="track-detail__empty">暂无关联竞品</div>
+          )}
+        </div>
+        <div className="track-detail__related">
+          <div className="field-label">关联资料</div>
+          {r.attachments && r.attachments.length > 0 ? (
             <div className="track-attachment-list">
               {r.attachments.map((attachment) => (
-                <button
-                  className="track-attachment"
-                  key={attachment.id}
-                  type="button"
-                  onClick={() => setPreviewAttachment(attachment)}
-                >
-                  {attachment.kind === 'image' ? (
-                    <img src={attachment.url} alt={attachment.name} />
-                  ) : (
-                    <span className="track-attachment__file">文件</span>
-                  )}
+                <button className="track-attachment" key={`related-${attachment.id}`} type="button" onClick={() => setPreviewAttachment(attachment)}>
+                  {attachment.kind === 'image' ? <img src={attachment.url} alt={attachment.name} /> : <span className="track-attachment__file">文件</span>}
                   <span>{attachment.name}</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="track-detail__empty">暂无关联资料</div>
+          )}
+        </div>
+        <div className="track-detail__meeting">
+          <div className="track-detail__meeting-head"><div className="field-label">会议记录</div><button type="button" className="icon-btn" onClick={() => setShowMeetingForm((value) => !value)} title="新增会议记录" aria-label="新增会议记录"><Icon name="plus" size={14} /></button></div>
+          {showMeetingForm && <div className="track-meeting-form"><input className="text-input" value={meetingTitle} onChange={(event) => setMeetingTitle(event.target.value)} placeholder="会议主题" /><input className="text-input" type="date" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} /><textarea className="text-area" rows={3} value={meetingContent} onChange={(event) => setMeetingContent(event.target.value)} placeholder="记录会议结论、决策和待办…" /><div className="track-meeting-form__actions"><button type="button" className="btn-ghost" onClick={() => setShowMeetingForm(false)}>取消</button><button type="button" className="btn-primary" onClick={() => addMeeting(r)} style={{ opacity: meetingTitle.trim() || meetingContent.trim() ? 1 : .45 }}>保存记录</button></div></div>}
+          {(r.meetings || []).length > 0 ? <div className="track-meeting-list">{(r.meetings || []).map((meeting) => <article className="track-meeting" key={meeting.id}><div className="track-meeting__top"><strong>{meeting.title}</strong>{meeting.date && <time>{meeting.date}</time>}</div><div>{meeting.content || '暂无会议内容'}</div></article>)}</div> : !showMeetingForm && <div className="track-detail__empty">暂无会议记录</div>}
+        </div>
         </div>
         {previewAttachment && (
         <div className="overlay" onClick={() => setPreviewAttachment(null)}>

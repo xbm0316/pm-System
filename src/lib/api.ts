@@ -25,11 +25,14 @@ function toReq(r: any): Requirement {
     priority: (r.priority || 'P1') as Priority,
     status: (r.status || '调研中') as RequirementStatus,
     createdAt: Number(r.created_at),
+    attachments: Array.isArray(r.attachments) ? r.attachments : undefined,
+    competitorIds: Array.isArray(r.competitor_ids) ? r.competitor_ids : undefined,
+    prd: r.prd || undefined,
   }
 }
 
 function toComp(r: any): Competitor {
-  return { id: r.id, spaceId: r.space_id, name: r.name, url: r.url || '', createdAt: Number(r.created_at) }
+  return { id: r.id, spaceId: r.space_id, name: r.name, url: r.url || '', description: r.description || '', createdAt: Number(r.created_at) }
 }
 
 function toRetro(r: any): Retro {
@@ -82,6 +85,13 @@ export async function insertRequirement(r: Requirement) {
 export async function updateRequirementStatus(id: string, status: RequirementStatus) {
   const { error } = await supabase.from('requirements').update({ status }).eq('id', id)
   if (error) console.error('updateRequirementStatus', error)
+}
+
+export async function deleteRequirementRow(id: string) {
+  const { error: retroError } = await supabase.from('retros').delete().eq('req_id', id)
+  if (retroError) console.error('deleteRequirementRetros', retroError)
+  const { error } = await supabase.from('requirements').delete().eq('id', id)
+  if (error) console.error('deleteRequirement', error)
 }
 
 // ---------- 竞品 ----------
