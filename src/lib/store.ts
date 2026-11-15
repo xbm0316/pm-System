@@ -1,10 +1,16 @@
 export type TypeName = '产品经理' | '项目经理' | '独立站电商运营'
 
-export const ALL_TYPES: TypeName[] = ['产品经理', '项目经理', '独立站电商运营']
+export const ALL_TYPES: TypeName[] = ['项目经理']
 
 export type RequirementStatus = '调研中' | '已评审' | '开发中' | '测试中' | '已上线'
 
 export const REQ_STATUSES: RequirementStatus[] = ['调研中', '已评审', '开发中', '测试中', '已上线']
+
+export type ProjectStatus = '调研中' | '已启动' | '实施中' | '调试中' | '验收中' | '质保中' | '项目结束'
+export const PROJECT_STATUSES: ProjectStatus[] = ['调研中', '已启动', '实施中', '调试中', '验收中', '质保中', '项目结束']
+
+export type TaskStatus = '调研中' | '实施中' | '调试中' | '验收中' | '任务结束'
+export const TASK_STATUSES: TaskStatus[] = ['调研中', '实施中', '调试中', '验收中', '任务结束']
 
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 
@@ -53,11 +59,12 @@ export interface Project {
   id: string
   spaceId: string
   name: string
+  status: ProjectStatus
   createdAt: number
   archivedAt?: number
 }
 
-export type ProjectIssueStatus = '待处理' | '处理中' | '已解决'
+export type ProjectIssueStatus = '待处理' | '处理中' | '已处理'
 
 export interface ProjectIssue {
   id: string
@@ -83,7 +90,7 @@ export interface ProjectTask {
   name: string
   content: string
   priority: Priority
-  status: RequirementStatus
+  status: TaskStatus
   createdAt: number
   detail: string
   startDate?: string
@@ -95,6 +102,10 @@ export interface ProjectStore {
   projects: Project[]
   tasks: ProjectTask[]
   issues: ProjectIssue[]
+  retroTypes: WorkspaceCollectionType[]
+  retros: WorkspaceRetro[]
+  knowledgeTypes: WorkspaceCollectionType[]
+  knowledgeResources: KnowledgeResource[]
 }
 
 export interface PrdTableRow {
@@ -141,11 +152,51 @@ export interface Retro {
   createdAt: number
 }
 
+export interface WorkspaceCollectionType {
+  id: string
+  spaceId: string
+  name: string
+  createdAt: number
+}
+
+export interface WorkspaceRetro {
+  id: string
+  spaceId: string
+  typeId: string
+  title: string
+  content: string
+  createdAt: number
+  updatedAt?: number
+}
+
+export interface KnowledgeResource {
+  id: string
+  spaceId: string
+  typeId: string
+  name: string
+  fileName: string
+  mimeType: string
+  size: number
+  dataUrl: string
+  createdAt: number
+  updatedAt?: number
+  rotation?: number
+}
+
 export interface MenuDef {
   key: string
   label: string
   icon: string
 }
+
+export const WORKSPACE_TABS = [
+  { key: 'workbench', label: '项目工作台', icon: 'grid' },
+  { key: 'retro', label: '复盘', icon: 'trend' },
+  { key: 'knowledge', label: '知识库', icon: 'doc' },
+  { key: 'meeting', label: '会议纪要', icon: 'chat' },
+  { key: 'weekly', label: '周报编写', icon: 'clock' },
+] as const
+export type WorkspaceTabKey = typeof WORKSPACE_TABS[number]['key']
 
 export const MENUS: Record<TypeName, MenuDef[]> = {
   产品经理: [

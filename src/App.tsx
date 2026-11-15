@@ -5,18 +5,15 @@ import Workspace from './pages/Workspace'
 import { loadSession, saveSession, uid, type Space, type TypeName } from './lib/store'
 import { fetchSpaces, insertSpace, updateSpaceName, deleteSpaceRow } from './lib/api'
 
-type Theme = 'light' | 'dark'
-
 export default function App() {
   const [phone, setPhone] = useState<string | null>(() => loadSession())
   const [spaces, setSpaces] = useState<Space[]>([])
   const [activeSpaceId, setActiveSpaceId] = useState<string | null>(null)
-  const [theme, setTheme] = useState<Theme>('light')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
+    document.documentElement.removeAttribute('data-theme')
+  }, [])
 
   async function reload() {
     const list = await fetchSpaces()
@@ -77,8 +74,6 @@ export default function App() {
     return (
       <Workspace
         space={activeSpace}
-        theme={theme}
-        onThemeChange={setTheme}
         onBackToHome={() => setActiveSpaceId(null)}
       />
     )
@@ -91,8 +86,6 @@ export default function App() {
       onCreate={createSpace}
       onRename={renameSpace}
       onDelete={deleteSpace}
-      theme={theme}
-      onThemeChange={setTheme}
       onLogout={handleLogout}
     />
   )

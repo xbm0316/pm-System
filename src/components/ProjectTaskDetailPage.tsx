@@ -1,20 +1,20 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import Icon from './Icon'
-import { REQ_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type RequirementStatus } from '../lib/store'
+import { TASK_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type TaskStatus } from '../lib/store'
 
 type TaskTab = 'content' | 'issues'
 
 interface Props {
   task: ProjectTask
   issues: ProjectIssue[]
-  onStatusChange: (taskId: string, status: RequirementStatus) => void
+  onStatusChange: (taskId: string, status: TaskStatus) => void
   onAddIssue: (issue: ProjectIssue) => void
   onUpdateIssue: (issueId: string, patch: Partial<ProjectIssue>) => void
   onUpdateTask: (taskId: string, patch: Partial<ProjectTask>) => void
   onClose: () => void
 }
 
-const issueStatuses: ProjectIssueStatus[] = ['待处理', '处理中', '已解决']
+const issueStatuses: ProjectIssueStatus[] = ['待处理', '处理中', '已处理']
 
 export default function ProjectTaskDetailPage({ task, issues, onStatusChange, onAddIssue, onUpdateIssue, onUpdateTask, onClose }: Props) {
   const [tab, setTab] = useState<TaskTab>('content')
@@ -131,8 +131,8 @@ export default function ProjectTaskDetailPage({ task, issues, onStatusChange, on
             <section className="project-task-section">
               <div className="project-task-section__label">任务进度</div>
               <div className="project-task-status-list">
-                {REQ_STATUSES.map((status) => {
-                  const active = REQ_STATUSES.indexOf(status) <= REQ_STATUSES.indexOf(task.status)
+                {TASK_STATUSES.map((status) => {
+                  const active = TASK_STATUSES.indexOf(status) <= TASK_STATUSES.indexOf(task.status)
                   return (
                     <button key={status} type="button" className={`project-task-status${active ? ' project-task-status--active' : ''}${task.status === status ? ' project-task-status--current' : ''}`} onClick={() => onStatusChange(task.id, status)}>
                       <span className="project-task-status__dot"><Icon name="check" size={11} /></span>
@@ -168,7 +168,7 @@ export default function ProjectTaskDetailPage({ task, issues, onStatusChange, on
             <section className="project-issue-list">
               {taskIssues.length === 0 ? <div className="project-issues__empty">暂未记录问题</div> : taskIssues.map((issue) => (
                 <article className="project-issue" key={issue.id}>
-                  <div className="project-issue__top"><div className="project-issue__title">{issue.title}</div><select className="project-issue__status" value={issue.status} onChange={(event) => onUpdateIssue(issue.id, { status: event.target.value as ProjectIssueStatus })}>{issueStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></div>
+                  <div className="project-issue__top"><div className="project-issue__title">{issue.title}</div><div className="project-issue-status-list">{issueStatuses.map((status) => <button type="button" key={status} className={`project-task-status project-issue-status${status === issue.status ? ' project-task-status--active project-task-status--current' : ''}`} onClick={() => onUpdateIssue(issue.id, { status })}><span className="project-task-status__dot"><Icon name="check" size={11} /></span><span>{status}</span></button>)}</div></div>
                   {issue.description && <div className="project-issue__description">{issue.description}</div>}
                   <div className="project-issue__date">{new Date(issue.createdAt).toLocaleString('zh-CN', { hour12: false })}</div>
                 </article>

@@ -12,7 +12,7 @@ import type {
 // ---------- 映射：DB 行 -> 前端对象 ----------
 
 function toSpace(r: any): Space {
-  return { id: r.id, name: r.name, types: (r.types || []) as TypeName[], createdAt: Number(r.created_at) }
+  return { id: r.id, name: r.name, types: ['项目经理'], createdAt: Number(r.created_at) }
 }
 
 function toReq(r: any): Requirement {

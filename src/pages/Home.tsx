@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import TopBar from '../components/TopBar'
 import Icon from '../components/Icon'
-import { ALL_TYPES, type Space, type TypeName, uid } from '../lib/store'
+import { type Space, type TypeName } from '../lib/store'
 
 interface Props {
   spaces: Space[]
@@ -9,8 +9,6 @@ interface Props {
   onCreate: (name: string, types: TypeName[]) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
-  theme: 'light' | 'dark'
-  onThemeChange: (t: 'light' | 'dark') => void
   onLogout: () => void
 }
 
@@ -20,14 +18,11 @@ export default function Home({
   onCreate,
   onRename,
   onDelete,
-  theme,
-  onThemeChange,
   onLogout,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newTypes, setNewTypes] = useState<TypeName[]>([])
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<Space | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -43,17 +38,12 @@ export default function Home({
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [])
 
-  function toggleType(t: TypeName) {
-    setNewTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
-  }
-
   function submitCreate() {
     const name = newName.trim()
-    if (!name || newTypes.length === 0) return
-    onCreate(name, newTypes)
+    if (!name) return
+    onCreate(name, ['项目经理'])
     setShowCreate(false)
     setNewName('')
-    setNewTypes([])
   }
 
   function submitRename() {
@@ -69,8 +59,6 @@ export default function Home({
       <TopBar
         title="工作空间"
         hideTitle
-        theme={theme}
-        onThemeChange={onThemeChange}
         onLogout={onLogout}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -168,37 +156,8 @@ export default function Home({
               autoFocus
             />
 
-            <div className="field-label">包含哪些类型</div>
-            <div className="type-list">
-              {ALL_TYPES.map((t) => {
-                const on = newTypes.includes(t)
-                return (
-                  <button
-                    key={t}
-                    className={`type-opt${on ? ' type-opt--on' : ''}`}
-                    onClick={() => toggleType(t)}
-                  >
-                    <span className="type-opt__box">
-                      {on && (
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </span>
-                    <span className="type-opt__label">{t}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <div className="field-label">空间类型</div>
+            <div className="space-type-fixed"><Icon name="grid" size={15} /> 项目经理</div>
 
             <div className="modal__actions">
               <button className="btn-ghost" onClick={() => setShowCreate(false)}>
@@ -207,7 +166,7 @@ export default function Home({
               <button
                 className="btn-primary"
                 onClick={submitCreate}
-                style={{ opacity: !newName.trim() || newTypes.length === 0 ? 0.45 : 1 }}
+                style={{ opacity: !newName.trim() ? 0.45 : 1 }}
               >
                 创建
               </button>

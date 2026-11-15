@@ -1,35 +1,55 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from './Icon'
 import ProjectTaskDetailPage from './ProjectTaskDetailPage'
-import { PRIORITIES, REQ_STATUSES, uid, type Priority, type Project, type ProjectIssue, type ProjectStore, type ProjectTask, type RequirementStatus } from '../lib/store'
+import RetroWorkspace from './RetroWorkspace'
+import KnowledgeWorkspace from './KnowledgeWorkspace'
+import { PRIORITIES, PROJECT_STATUSES, TASK_STATUSES, uid, type KnowledgeResource, type Priority, type Project, type ProjectIssue, type ProjectStatus, type ProjectStore, type ProjectTask, type TaskStatus, type WorkspaceCollectionType, type WorkspaceRetro } from '../lib/store'
 
 interface Props {
   spaceId: string
   searchQuery?: string
+  onRemindersChange?: (count: number) => void
+  view?: 'board' | 'retro' | 'knowledge'
 }
 
 const STORAGE_PREFIX = 'jawcat.project-manager.v3.'
 
+function normalizeTaskStatus(status: unknown): TaskStatus {
+  if (TASK_STATUSES.includes(status as TaskStatus)) return status as TaskStatus
+  if (status === '开发中') return '实施中'
+  if (status === '测试中') return '调试中'
+  if (status === '已上线') return '任务结束'
+  return '调研中'
+}
+
 function readStore(spaceId: string): ProjectStore {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${spaceId}`)
-    if (!raw) return { projects: [], tasks: [], issues: [] }
+    if (!raw) return { projects: [], tasks: [], issues: [], retroTypes: [], retros: [], knowledgeTypes: [], knowledgeResources: [] }
     const parsed = JSON.parse(raw) as Partial<ProjectStore>
     return {
-      projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
-      issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+      projects: Array.isArray(parsed.projects) ? parsed.projects.map((project) => ({ ...project, status: PROJECT_STATUSES.includes(project.status as ProjectStatus) ? project.status as ProjectStatus : '调研中' })) : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map((task) => ({ ...task, status: normalizeTaskStatus(task.status) })) : [],
+      issues: Array.isArray(parsed.issues) ? parsed.issues.map((issue) => ({ ...issue, status: (issue.status as string) === '已解决' ? '已处理' : issue.status || '待处理' })) : [],
+      retroTypes: Array.isArray(parsed.retroTypes) ? parsed.retroTypes : [],
+      retros: Array.isArray(parsed.retros) ? parsed.retros : [],
+      knowledgeTypes: Array.isArray(parsed.knowledgeTypes) ? parsed.knowledgeTypes : [],
+      knowledgeResources: Array.isArray(parsed.knowledgeResources) ? parsed.knowledgeResources : [],
     }
   } catch {
-    return { projects: [], tasks: [], issues: [] }
+    return { projects: [], tasks: [], issues: [], retroTypes: [], retros: [], knowledgeTypes: [], knowledgeResources: [] }
   }
 }
 
-function statusClass(status: RequirementStatus) {
-  return status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'
+function statusClass(status: TaskStatus) {
+  return status === '调研中' ? 'research' : status === '实施中' ? 'development' : status === '调试中' ? 'testing' : status === '验收中' ? 'reviewed' : 'live'
 }
 
-export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props) {
+function projectStatusClass(status: ProjectStatus) {
+  return status === '调研中' ? 'research' : status === '已启动' ? 'reviewed' : status === '实施中' ? 'development' : status === '调试中' ? 'testing' : status === '验收中' ? 'reviewed' : status === '质保中' ? 'live' : 'complete'
+}
+
+export default function ProjectManagerBoard({ spaceId, searchQuery = '', onRemindersChange, view = 'board' }: Props) {
   const [store, setStore] = useState<ProjectStore>(() => readStore(spaceId))
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => readStore(spaceId).projects.find((project) => !project.archivedAt)?.id || null)
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
@@ -44,6 +64,9 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
   const [taskStartDate, setTaskStartDate] = useState('')
   const [taskEndDate, setTaskEndDate] = useState('')
   const [taskPriority, setTaskPriority] = useState<Priority>('P1')
+  const [showProjectStatus, setShowProjectStatus] = useState(false)
+  const [taskFormError, setTaskFormError] = useState('')
+  const [deleteTaskTarget, setDeleteTaskTarget] = useState<ProjectTask | null>(null)
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_PREFIX}${spaceId}`, JSON.stringify(store))
@@ -60,6 +83,7 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
   const archivedProjects = store.projects.filter((project) => project.archivedAt).sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0))
   const activeProject = projects.find((project) => project.id === activeProjectId) || null
   const activeTask = store.tasks.find((task) => task.id === detailTaskId) || null
+  const reminderCount = store.issues.filter((issue) => issue.status !== '已处理').length + store.tasks.filter((task) => task.endDate && task.status !== '任务结束' && new Date(`${task.endDate}T23:59:59`).getTime() - Date.now() <= 3 * 24 * 60 * 60 * 1000).length
   const visibleTasks = useMemo(() => {
     if (!activeProject) return []
     return store.tasks
@@ -68,6 +92,10 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
       .sort((a, b) => b.createdAt - a.createdAt)
   }, [activeProject, query, store.tasks])
 
+  useEffect(() => {
+    onRemindersChange?.(reminderCount)
+  }, [onRemindersChange, reminderCount])
+
   function patchStore(updater: (current: ProjectStore) => ProjectStore) {
     setStore((current) => updater(current))
   }
@@ -75,7 +103,7 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
   function createProject() {
     const name = projectName.trim()
     if (!name) return
-    const project: Project = { id: uid(), spaceId, name, createdAt: Date.now() }
+    const project: Project = { id: uid(), spaceId, name, status: '调研中', createdAt: Date.now() }
     patchStore((current) => ({ ...current, projects: [...current.projects, project] }))
     setActiveProjectId(project.id)
     setProjectName('')
@@ -96,7 +124,14 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
 
   function createTask() {
     const name = taskName.trim()
-    if (!name || !activeProject) return
+    if (!name || !taskStartDate || !taskEndDate || !activeProject) {
+      setTaskFormError('请填写任务名称、开始日期和结束日期')
+      return
+    }
+    if (taskEndDate < taskStartDate) {
+      setTaskFormError('结束日期不能早于开始日期')
+      return
+    }
     const task: ProjectTask = { id: uid(), projectId: activeProject.id, name, content: taskContent.trim(), detail: taskDetail.trim(), startDate: taskStartDate, endDate: taskEndDate, priority: taskPriority, status: '调研中', createdAt: Date.now() }
     patchStore((current) => ({ ...current, tasks: [...current.tasks, task] }))
     setTaskName('')
@@ -105,10 +140,21 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
     setTaskStartDate('')
     setTaskEndDate('')
     setTaskPriority('P1')
+    setTaskFormError('')
     setShowCreateTask(false)
   }
 
-  function updateTaskStatus(taskId: string, status: RequirementStatus) {
+  function deleteTask(task: ProjectTask) {
+    patchStore((current) => ({
+      ...current,
+      tasks: current.tasks.filter((item) => item.id !== task.id),
+      issues: current.issues.filter((issue) => issue.taskId !== task.id),
+    }))
+    if (detailTaskId === task.id) setDetailTaskId(null)
+    setDeleteTaskTarget(null)
+  }
+
+  function updateTaskStatus(taskId: string, status: TaskStatus) {
     patchStore((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, status } : task) }))
   }
 
@@ -124,8 +170,30 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
     patchStore((current) => ({ ...current, issues: current.issues.map((issue) => issue.id === issueId ? { ...issue, ...patch } : issue) }))
   }
 
+  function updateProjectStatus(status: ProjectStatus) {
+    if (!activeProject) return
+    patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === activeProject.id ? { ...project, status } : project) }))
+    setShowProjectStatus(false)
+  }
+
+  function updateRetroStore(types: ProjectStore['retroTypes'], retros: ProjectStore['retros']) {
+    patchStore((current) => ({ ...current, retroTypes: types, retros }))
+  }
+
+  function updateKnowledgeStore(types: ProjectStore['knowledgeTypes'], resources: ProjectStore['knowledgeResources']) {
+    patchStore((current) => ({ ...current, knowledgeTypes: types, knowledgeResources: resources }))
+  }
+
   if (activeTask) {
     return <ProjectTaskDetailPage task={activeTask} issues={store.issues} onStatusChange={updateTaskStatus} onAddIssue={addIssue} onUpdateIssue={updateIssue} onUpdateTask={updateTask} onClose={() => setDetailTaskId(null)} />
+  }
+
+  if (view === 'retro') {
+    return <RetroWorkspace spaceId={spaceId} types={store.retroTypes} retros={store.retros} onChange={updateRetroStore} searchQuery={searchQuery} />
+  }
+
+  if (view === 'knowledge') {
+    return <KnowledgeWorkspace spaceId={spaceId} types={store.knowledgeTypes} resources={store.knowledgeResources} onChange={updateKnowledgeStore} searchQuery={searchQuery} />
   }
 
   return (
@@ -147,14 +215,14 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
         <div className="project-manager__empty"><div className="project-manager__empty-icon"><Icon name="grid" size={18} /></div><div>还没有项目</div><span>点击上方 + 新增项目后开始管理任务</span></div>
       ) : (
         <div className="project-manager__body">
-          <div className="project-manager__project-title"><div><div className="project-manager__eyebrow">当前项目</div><h1>{activeProject.name}</h1></div><button type="button" className="btn-primary project-manager__task-add" onClick={() => setShowCreateTask(true)}><Icon name="plus" size={14} /> 新增任务</button></div>
+          <div className="project-manager__project-title"><div><div className="project-manager__eyebrow">当前项目</div><div className="project-manager__project-name-row"><h1>{activeProject.name}</h1><button type="button" className={`project-status-badge project-status-badge--${projectStatusClass(activeProject.status)}`} onClick={() => setShowProjectStatus(true)} title="修改项目状态">{activeProject.status}<Icon name="chevronDown" size={12} /></button></div></div><button type="button" className="btn-primary project-manager__task-add" onClick={() => { setTaskFormError(''); setShowCreateTask(true) }}><Icon name="plus" size={14} /> 新增任务</button></div>
           <div className="status-groups-shell project-task-groups-shell">
             <div className="status-groups project-task-groups">
-              {REQ_STATUSES.map((status) => {
+              {TASK_STATUSES.map((status) => {
                 const tasks = visibleTasks.filter((task) => task.status === status)
                 return <div className={`status-group status-group--${statusClass(status)}`} key={status}>
                   <div className="status-group__head"><span className="status-group__name">{status}</span><span className="status-group__count">{tasks.length}</span></div>
-                  <div className="status-group__body-shell"><div className="status-group__body">{tasks.length === 0 ? <div className="status-group__empty">暂无任务</div> : tasks.map((task) => <button type="button" className="req-card project-task-card" key={task.id} onClick={() => setDetailTaskId(task.id)}><div className="req-card__top"><span className="req-card__ver">任务</span><span className={`pri pri--${task.priority.toLowerCase()}`}>{task.priority}</span></div><div className="req-card__name">{task.name}</div>{task.content && <div className="req-card__content">{task.content}</div>}</button>)}</div></div>
+                  <div className="status-group__body-shell"><div className="status-group__body">{tasks.length === 0 ? <div className="status-group__empty">暂无任务</div> : tasks.map((task) => <div className="req-card-wrap project-task-card-wrap" key={task.id}><div className="req-card project-task-card" onClick={() => setDetailTaskId(task.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetailTaskId(task.id) } }} role="button" tabIndex={0} aria-label={`${task.name}，查看任务详情`}><div className="req-card__top"><span className="req-card__ver">任务</span><span className={`pri pri--${task.priority.toLowerCase()}`}>{task.priority}</span></div><div className="req-card__name">{task.name}</div>{task.content && <div className="req-card__content">{task.content}</div>}</div><div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}><button type="button" className="req-card__delete" onClick={() => setDeleteTaskTarget(task)} title={`删除 ${task.name}`} aria-label={`删除 ${task.name}`}><span className="icon-circle"><Icon name="trash" size={13} /></span></button></div></div>)}</div></div>
                 </div>
               })}
             </div>
@@ -162,8 +230,10 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '' }: Props
         </div>
       )}
 
+      {showProjectStatus && activeProject && <div className="overlay" onClick={() => setShowProjectStatus(false)}><div className="modal modal--wide project-status-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">项目进度</div><div className="project-task-status-list project-status-list">{PROJECT_STATUSES.map((status) => { const active = PROJECT_STATUSES.indexOf(status) <= PROJECT_STATUSES.indexOf(activeProject.status); return <button type="button" key={status} className={`project-task-status${active ? ' project-task-status--active' : ''}${activeProject.status === status ? ' project-task-status--current' : ''}`} onClick={() => updateProjectStatus(status)}><span className="project-task-status__dot"><Icon name="check" size={11} /></span><span>{status}</span></button> })}</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setShowProjectStatus(false)}>关闭</button></div></div></div>}
       {showCreateProject && <div className="overlay" onClick={() => setShowCreateProject(false)}><div className="modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">新增项目</div><div className="field-label">项目名称</div><input className="text-input" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="输入项目名称" autoFocus /><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setShowCreateProject(false)}>取消</button><button type="button" className="btn-primary" onClick={createProject} style={{ opacity: projectName.trim() ? 1 : .45 }}>创建项目</button></div></div></div>}
-      {showCreateTask && <div className="overlay" onClick={() => setShowCreateTask(false)}><div className="modal modal--wide" onClick={(event) => event.stopPropagation()}><div className="modal__title">新增任务</div><div className="field-label">任务名称</div><input className="text-input" value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="一句话描述要完成的任务" autoFocus /><div className="field-label" style={{ marginTop: 16 }}>任务排期</div><div className="project-task-schedule-edit"><label>开始日期<input className="text-input" type="date" value={taskStartDate} onChange={(event) => setTaskStartDate(event.target.value)} /></label><label>结束日期<input className="text-input" type="date" value={taskEndDate} onChange={(event) => setTaskEndDate(event.target.value)} /></label></div><div className="field-label" style={{ marginTop: 16 }}>任务说明</div><textarea className="text-area" rows={3} value={taskContent} onChange={(event) => setTaskContent(event.target.value)} placeholder="目标、验收标准或执行说明…" /><div className="field-label" style={{ marginTop: 16 }}>补充详情</div><textarea className="text-area" rows={3} value={taskDetail} onChange={(event) => setTaskDetail(event.target.value)} placeholder="可选：负责人、依赖和备注…" /><div className="field-label" style={{ marginTop: 16 }}>优先级</div><div className="chip-row">{PRIORITIES.map((priority) => <button type="button" className={`chip${taskPriority === priority ? ' chip--on' : ''}`} key={priority} onClick={() => setTaskPriority(priority)}>{priority}</button>)}</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setShowCreateTask(false)}>取消</button><button type="button" className="btn-primary" onClick={createTask} style={{ opacity: taskName.trim() ? 1 : .45 }}>创建任务</button></div></div></div>}
+      {showCreateTask && <div className="overlay project-task-create-overlay" onClick={() => setShowCreateTask(false)}><div className="modal modal--wide project-task-create-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">新增任务</div><div className="field-label">任务名称 <span className="field-required">*</span></div><input className={`text-input${taskFormError && !taskName.trim() ? ' text-input--error' : ''}`} value={taskName} onChange={(event) => { setTaskName(event.target.value); setTaskFormError('') }} placeholder="一句话描述要完成的任务" autoFocus required /><div className="field-label" style={{ marginTop: 16 }}>任务排期 <span className="field-required">*</span></div><div className="project-task-schedule-edit"><label>开始日期<input className={`text-input${taskFormError && !taskStartDate ? ' text-input--error' : ''}`} type="date" value={taskStartDate} onChange={(event) => { setTaskStartDate(event.target.value); setTaskFormError('') }} required /></label><label>结束日期<input className={`text-input${taskFormError && !taskEndDate ? ' text-input--error' : ''}`} type="date" value={taskEndDate} onChange={(event) => { setTaskEndDate(event.target.value); setTaskFormError('') }} required /></label></div>{taskFormError && <div className="form-error" role="alert">{taskFormError}</div>}<div className="field-label" style={{ marginTop: 16 }}>任务说明</div><textarea className="text-area" rows={3} value={taskContent} onChange={(event) => setTaskContent(event.target.value)} placeholder="目标、验收标准或执行说明…" /><div className="field-label" style={{ marginTop: 16 }}>补充详情</div><textarea className="text-area" rows={3} value={taskDetail} onChange={(event) => setTaskDetail(event.target.value)} placeholder="可选：负责人、依赖和备注…" /><div className="field-label" style={{ marginTop: 16 }}>优先级</div><div className="chip-row">{PRIORITIES.map((priority) => <button type="button" className={`chip${taskPriority === priority ? ' chip--on' : ''}`} key={priority} onClick={() => setTaskPriority(priority)}>{priority}</button>)}</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setShowCreateTask(false)}>取消</button><button type="button" className="btn-primary" onClick={createTask} style={{ opacity: taskName.trim() && taskStartDate && taskEndDate ? 1 : .45 }}>创建任务</button></div></div></div>}
+      {deleteTaskTarget && <div className="overlay" onClick={() => setDeleteTaskTarget(null)}><div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">确认删除任务？</div><div className="delete-confirm-modal__text">删除「{deleteTaskTarget.name}」后，任务及其关联的问题记录也会一并移除。</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setDeleteTaskTarget(null)}>取消</button><button type="button" className="btn-primary btn-primary--danger" onClick={() => deleteTask(deleteTaskTarget)}>确认删除</button></div></div></div>}
       {deleteTarget && <div className="overlay" onClick={() => setDeleteTarget(null)}><div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">确认归档项目？</div><div className="delete-confirm-modal__text">归档「{deleteTarget.name}」后，它会从当前项目列表隐藏，可在归档列表中恢复。</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setDeleteTarget(null)}>取消</button><button type="button" className="btn-primary btn-primary--danger" onClick={() => archiveProject(deleteTarget)}>确认归档</button></div></div></div>}
       {showArchive && <div className="overlay" onClick={() => setShowArchive(false)}><div className="modal project-archive-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">归档项目</div>{archivedProjects.length === 0 ? <div className="project-archive__empty">暂无归档项目</div> : <div className="project-archive__list">{archivedProjects.map((project) => <div className="project-archive__item" key={project.id}><div><div className="project-archive__name">{project.name}</div><div className="project-archive__date">归档于 {new Date(project.archivedAt || project.createdAt).toLocaleDateString('zh-CN')}</div></div><button type="button" className="btn-ghost" onClick={() => restoreProject(project)}>恢复</button></div>)}</div>}<div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setShowArchive(false)}>关闭</button></div></div></div>}
     </div>
