@@ -9,8 +9,8 @@ export const REQ_STATUSES: RequirementStatus[] = ['调研中', '已评审', '开
 export type ProjectStatus = '调研中' | '已启动' | '实施中' | '调试中' | '验收中' | '质保中' | '项目结束'
 export const PROJECT_STATUSES: ProjectStatus[] = ['调研中', '已启动', '实施中', '调试中', '验收中', '质保中', '项目结束']
 
-export type TaskStatus = '调研中' | '实施中' | '调试中' | '验收中' | '任务结束'
-export const TASK_STATUSES: TaskStatus[] = ['调研中', '实施中', '调试中', '验收中', '任务结束']
+export type TaskStatus = '调研中' | '实施中' | '调试中' | '验收中' | '质保中' | '任务结束'
+export const TASK_STATUSES: TaskStatus[] = ['调研中', '实施中', '调试中', '验收中', '质保中', '任务结束']
 
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 
@@ -60,6 +60,14 @@ export interface Project {
   spaceId: string
   name: string
   status: ProjectStatus
+  parentId?: string
+  description?: string
+  startDate?: string
+  endDate?: string
+  cost?: string
+  revenue?: string
+  profit?: string
+  progress?: number
   createdAt: number
   archivedAt?: number
 }
@@ -73,6 +81,8 @@ export interface ProjectIssue {
   description: string
   status: ProjectIssueStatus
   createdAt: number
+  endDate?: string
+  updatedAt?: number
 }
 
 export interface ProjectTaskAttachment {
@@ -96,6 +106,8 @@ export interface ProjectTask {
   startDate?: string
   endDate?: string
   attachments?: ProjectTaskAttachment[]
+  updatedAt?: number
+  progress?: number
 }
 
 export interface ProjectStore {
@@ -106,6 +118,8 @@ export interface ProjectStore {
   retros: WorkspaceRetro[]
   knowledgeTypes: WorkspaceCollectionType[]
   knowledgeResources: KnowledgeResource[]
+  meetings: WorkspaceMeeting[]
+  summaries: ProjectSummary[]
 }
 
 export interface PrdTableRow {
@@ -167,6 +181,40 @@ export interface WorkspaceRetro {
   content: string
   createdAt: number
   updatedAt?: number
+  attachments?: ProjectTaskAttachment[]
+}
+
+export interface WorkspaceMeeting {
+  id: string
+  spaceId: string
+  title: string
+  date: string
+  content: string
+  taskIds?: string[]
+  createdAt: number
+  updatedAt?: number
+}
+
+export interface ProjectSummaryRow {
+  id: string
+  name: string
+  date: string
+  overdueDays?: number
+}
+
+export interface ProjectSummary {
+  id: string
+  projectId: string
+  startDate: string
+  endDate: string
+  projectProgress: string
+  projectStatus?: ProjectStatus
+  projectProgressPercent?: number
+  completedTasks: ProjectSummaryRow[]
+  pendingTasks: ProjectSummaryRow[]
+  completedIssues: ProjectSummaryRow[]
+  pendingIssues: ProjectSummaryRow[]
+  createdAt: number
 }
 
 export interface KnowledgeResource {
@@ -194,7 +242,6 @@ export const WORKSPACE_TABS = [
   { key: 'retro', label: '复盘', icon: 'trend' },
   { key: 'knowledge', label: '知识库', icon: 'doc' },
   { key: 'meeting', label: '会议纪要', icon: 'chat' },
-  { key: 'weekly', label: '周报编写', icon: 'clock' },
 ] as const
 export type WorkspaceTabKey = typeof WORKSPACE_TABS[number]['key']
 

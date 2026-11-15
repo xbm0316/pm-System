@@ -187,6 +187,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
   const [content, setContent] = useState('')
   const [priority, setPriority] = useState<Priority>('P1')
   const [attachments, setAttachments] = useState<RequirementAttachment[]>([])
+  const [attachmentError, setAttachmentError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Requirement | null>(null)
 
   const consumedSignal = useRef(openSignal)
@@ -245,30 +246,39 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     setContent('')
     setPriority('P1')
     setAttachments([])
+    setAttachmentError('')
   }
 
   function closeForm() {
     setShowForm(false)
     setAttachments([])
+    setAttachmentError('')
   }
 
   function addAttachments(files: FileList | null) {
     if (!files) return
-    const next = Array.from(files).map((file) => ({
-      id: uid(),
-      name: file.name,
-      type: file.type || 'application/octet-stream',
-      size: file.size,
-      url: URL.createObjectURL(file),
-      kind: file.type.startsWith('image/') ? 'image' as const : 'file' as const,
-    }))
-    setAttachments((prev) => [...prev, ...next])
+    const incoming = Array.from(files)
+    const valid = incoming.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
+    if (valid.length !== incoming.length) setAttachmentError('空文件或超过 15 MB 的文件未添加')
+    if (attachments.length + valid.length > 20) return setAttachmentError('需求最多保留 20 个附件')
+    if (attachments.reduce((total, item) => total + item.size, 0) + valid.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024) return setAttachmentError('需求附件总大小不能超过 50 MB')
+    if (valid.length === incoming.length) setAttachmentError('')
+    Promise.allSettled(valid.map((file) => new Promise<RequirementAttachment>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => typeof reader.result === 'string' && reader.result.startsWith('data:') ? resolve({ id: uid(), name: file.name, type: file.type || 'application/octet-stream', size: file.size, url: reader.result, kind: file.type.startsWith('image/') ? 'image' : 'file' }) : reject(new Error('invalid data url'))
+      reader.onerror = () => reject(reader.error || new Error('file read failed'))
+      reader.readAsDataURL(file)
+    }))).then((results) => {
+      const next = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+      const failed = results.length - next.length
+      if (next.length) setAttachments((prev) => [...prev, ...next])
+      if (failed) setAttachmentError(`${failed} 个文件读取失败，请重新选择`)
+    })
   }
 
   function removeAttachment(id: string) {
     setAttachments((prev) => {
       const item = prev.find((a) => a.id === id)
-      if (item) URL.revokeObjectURL(item.url)
       return prev.filter((a) => a.id !== id)
     })
   }
@@ -318,6 +328,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
                   className="text-input"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
                   placeholder="一句话说清要做什么"
                   autoFocus
                 />
@@ -377,6 +388,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
                   ))}
                 </div>
               )}
+              {attachmentError && <div className="form-error" role="alert">{attachmentError}</div>}
             </div>
 
             <div style={{ marginTop: 16 }}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon'
+import DatePicker from './DatePicker'
 import {
   REQ_STATUSES,
   type Requirement,
@@ -22,15 +23,17 @@ interface Props {
   searchQuery?: string
   competitors: Competitor[]
   onUpdateMeetings: (reqId: string, meetings: MeetingRecord[]) => void
+  onUpdateAttachments: (reqId: string, attachments: RequirementAttachment[]) => void
 }
 
-export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '', competitors, onUpdateMeetings }: Props) {
+export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '', competitors, onUpdateMeetings, onUpdateAttachments }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [previewAttachment, setPreviewAttachment] = useState<RequirementAttachment | null>(null)
   const [showMeetingForm, setShowMeetingForm] = useState(false)
   const [meetingTitle, setMeetingTitle] = useState('')
   const [meetingDate, setMeetingDate] = useState('')
   const [meetingContent, setMeetingContent] = useState('')
+  const [deleteAttachment, setDeleteAttachment] = useState<RequirementAttachment | null>(null)
 
   useEffect(() => {
     if (!previewAttachment) return
@@ -133,10 +136,13 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
           {r.attachments && r.attachments.length > 0 ? (
             <div className="track-attachment-list">
               {r.attachments.map((attachment) => (
-                <button className="track-attachment" key={`related-${attachment.id}`} type="button" onClick={() => setPreviewAttachment(attachment)}>
+                <div className="track-attachment-wrap" key={`related-${attachment.id}`}>
+                <button className="track-attachment" type="button" onClick={() => setPreviewAttachment(attachment)}>
                   {attachment.kind === 'image' ? <img src={attachment.url} alt={attachment.name} /> : <span className="track-attachment__file">文件</span>}
                   <span>{attachment.name}</span>
                 </button>
+                <button type="button" className="track-attachment__remove" onClick={() => setDeleteAttachment(attachment)} title={`删除附件 ${attachment.name}`} aria-label={`删除附件 ${attachment.name}`}><Icon name="trash" size={13} /></button>
+                </div>
               ))}
             </div>
           ) : (
@@ -145,7 +151,7 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
         </div>
         <div className="track-detail__meeting">
           <div className="track-detail__meeting-head"><div className="field-label">会议记录</div><button type="button" className="icon-btn" onClick={() => setShowMeetingForm((value) => !value)} title="新增会议记录" aria-label="新增会议记录"><Icon name="plus" size={14} /></button></div>
-          {showMeetingForm && <div className="track-meeting-form"><input className="text-input" value={meetingTitle} onChange={(event) => setMeetingTitle(event.target.value)} placeholder="会议主题" /><input className="text-input" type="date" value={meetingDate} onChange={(event) => setMeetingDate(event.target.value)} /><textarea className="text-area" rows={3} value={meetingContent} onChange={(event) => setMeetingContent(event.target.value)} placeholder="记录会议结论、决策和待办…" /><div className="track-meeting-form__actions"><button type="button" className="btn-ghost" onClick={() => setShowMeetingForm(false)}>取消</button><button type="button" className="btn-primary" onClick={() => addMeeting(r)} style={{ opacity: meetingTitle.trim() || meetingContent.trim() ? 1 : .45 }}>保存记录</button></div></div>}
+          {showMeetingForm && <div className="track-meeting-form"><input className="text-input" value={meetingTitle} onChange={(event) => setMeetingTitle(event.target.value)} placeholder="会议主题" /><DatePicker value={meetingDate} onChange={setMeetingDate} label="会议日期" /><textarea className="text-area" rows={3} value={meetingContent} onChange={(event) => setMeetingContent(event.target.value)} placeholder="记录会议结论、决策和待办…" /><div className="track-meeting-form__actions"><button type="button" className="btn-ghost" onClick={() => setShowMeetingForm(false)}>取消</button><button type="button" className="btn-primary" onClick={() => addMeeting(r)} style={{ opacity: meetingTitle.trim() || meetingContent.trim() ? 1 : .45 }}>保存记录</button></div></div>}
           {(r.meetings || []).length > 0 ? <div className="track-meeting-list">{(r.meetings || []).map((meeting) => <article className="track-meeting" key={meeting.id}><div className="track-meeting__top"><strong>{meeting.title}</strong>{meeting.date && <time>{meeting.date}</time>}</div><div>{meeting.content || '暂无会议内容'}</div></article>)}</div> : !showMeetingForm && <div className="track-detail__empty">暂无会议记录</div>}
         </div>
         </div>
@@ -164,11 +170,13 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
             )}
             <div className="modal__actions">
               <a className="btn-ghost attachment-preview__download" href={previewAttachment.url} download={previewAttachment.name}>下载附件</a>
+              <button className="btn-ghost btn-ghost--danger" onClick={() => { setDeleteAttachment(previewAttachment); setPreviewAttachment(null) }}><Icon name="trash" size={13} /> 删除</button>
               <button className="btn-primary" onClick={() => setPreviewAttachment(null)}>关闭</button>
             </div>
           </div>
         </div>
         )}
+        {deleteAttachment && <div className="overlay" onClick={() => setDeleteAttachment(null)}><div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">确认删除附件？</div><div className="delete-confirm-modal__text">删除「{deleteAttachment.name}」后无法恢复。</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setDeleteAttachment(null)}>取消</button><button type="button" className="btn-primary btn-primary--danger" onClick={() => { onUpdateAttachments(r.id, (r.attachments || []).filter((item) => item.id !== deleteAttachment.id)); setDeleteAttachment(null) }}>确认删除</button></div></div></div>}
       </>
     )
   }

@@ -78,8 +78,14 @@ export async function insertRequirement(r: Requirement) {
   const { error } = await supabase.from('requirements').insert({
     id: r.id, space_id: r.spaceId, version: r.version, name: r.name,
     content: r.content, priority: r.priority, status: r.status, created_at: r.createdAt,
+    attachments: r.attachments || [],
   })
   if (error) console.error('insertRequirement', error)
+}
+
+export async function updateRequirementAttachments(id: string, attachments: Requirement['attachments']) {
+  const { error } = await supabase.from('requirements').update({ attachments: attachments || [] }).eq('id', id)
+  if (error) console.error('updateRequirementAttachments', error)
 }
 
 export async function updateRequirementStatus(id: string, status: RequirementStatus) {

@@ -3,7 +3,7 @@ import Icon from './Icon'
 import ReqTrack from './ReqTrack'
 import ReqPrd from './ReqPrd'
 import RetroDialog from './RetroDialog'
-import type { Competitor, MeetingRecord, Requirement, RequirementPrd, RequirementStatus, Retro } from '../lib/store'
+import type { Competitor, MeetingRecord, Requirement, RequirementAttachment, RequirementPrd, RequirementStatus, Retro } from '../lib/store'
 
 type DetailTab = 'progress' | 'prd' | 'retro'
 
@@ -16,10 +16,11 @@ interface Props {
   onSavePrd: (reqId: string, prd: RequirementPrd) => void
   onAddRetro: (retro: Retro) => void
   onUpdateMeetings: (reqId: string, meetings: MeetingRecord[]) => void
+  onUpdateAttachments: (reqId: string, attachments: RequirementAttachment[]) => void
   onClose: () => void
 }
 
-export default function RequirementDetailPage({ requirement, requirements, competitors, retros, onStatusChange, onSavePrd, onAddRetro, onUpdateMeetings, onClose }: Props) {
+export default function RequirementDetailPage({ requirement, requirements, competitors, retros, onStatusChange, onSavePrd, onAddRetro, onUpdateMeetings, onUpdateAttachments, onClose }: Props) {
   const [tab, setTab] = useState<DetailTab>('progress')
   const bodyRef = useRef<HTMLElement>(null)
   const tabs: Array<{ key: DetailTab; label: string }> = [
@@ -73,6 +74,7 @@ export default function RequirementDetailPage({ requirement, requirements, compe
             onStatusChange={onStatusChange}
             focusId={requirement.id}
             onUpdateMeetings={onUpdateMeetings}
+            onUpdateAttachments={onUpdateAttachments}
           />
         )}
         {tab === 'prd' && (

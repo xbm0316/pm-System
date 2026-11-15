@@ -71,6 +71,7 @@ export default function CompAnalysis({ spaceId, competitors, onAdd, openSignal, 
               style={{ marginBottom: 16 }}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
               placeholder="竞品叫什么"
               autoFocus
             />
