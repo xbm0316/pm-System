@@ -1,6 +1,6 @@
 export type TypeName = '产品经理' | '项目经理' | '独立站电商运营'
 
-export const ALL_TYPES: TypeName[] = ['项目经理']
+export const ALL_TYPES: TypeName[] = ['产品经理', '项目经理', '独立站电商运营']
 
 export type RequirementStatus = '调研中' | '已评审' | '开发中' | '测试中' | '已上线'
 
@@ -9,8 +9,8 @@ export const REQ_STATUSES: RequirementStatus[] = ['调研中', '已评审', '开
 export type ProjectStatus = '调研中' | '已启动' | '实施中' | '调试中' | '验收中' | '质保中' | '项目结束'
 export const PROJECT_STATUSES: ProjectStatus[] = ['调研中', '已启动', '实施中', '调试中', '验收中', '质保中', '项目结束']
 
-export type TaskStatus = '调研中' | '实施中' | '调试中' | '验收中' | '质保中' | '任务结束'
-export const TASK_STATUSES: TaskStatus[] = ['调研中', '实施中', '调试中', '验收中', '质保中', '任务结束']
+export type TaskStatus = '调研中' | '处理中' | '处理完成'
+export const TASK_STATUSES: TaskStatus[] = ['调研中', '处理中', '处理完成']
 
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 
@@ -42,6 +42,7 @@ export interface Requirement {
   priority: Priority
   status: RequirementStatus
   createdAt: number
+  launchDate?: string
   attachments?: RequirementAttachment[]
   prd?: RequirementPrd
   competitorIds?: string[]
@@ -70,6 +71,7 @@ export interface Project {
   progress?: number
   createdAt: number
   archivedAt?: number
+  attachments?: ProjectTaskAttachment[]
 }
 
 export type ProjectIssueStatus = '待处理' | '处理中' | '已处理'

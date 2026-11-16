@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
-import type { WorkspaceTabKey } from '../lib/store'
-
 interface Props {
   title: string
-  workspaceTabs?: readonly { key: WorkspaceTabKey; label: string; icon: string }[]
-  activeWorkspaceTab?: WorkspaceTabKey
-  onWorkspaceTabChange?: (key: WorkspaceTabKey) => void
+  workspaceTabs?: readonly { key: string; label: string; icon: string }[]
+  activeWorkspaceTab?: string
+  onWorkspaceTabChange?: (key: string) => void
   onBackToHome?: () => void
   onLogout?: () => void
   searchQuery?: string
   onSearchChange?: (value: string) => void
   reminderCount?: number
-  reminderItems?: { id: string; kind: 'task' | 'issue'; title: string; dueDate: string; taskId: string }[]
-  onReminderClick?: (item: { id: string; kind: 'task' | 'issue'; title: string; dueDate: string; taskId: string }) => void
+  reminderItems?: { id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string }[]
+  onReminderClick?: (item: { id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string }) => void
   onSummaryClick?: () => void
   hideTitle?: boolean
   sidebarCollapsed?: boolean
@@ -40,6 +38,7 @@ export default function TopBar({ title, workspaceTabs, activeWorkspaceTab, onWor
     <header className={`topbar${workspaceTabs?.length ? ' topbar--workspace' : ''}`}>
       <div className="topbar__left">
         {onToggleSidebar && sidebarCollapsed && <button className="icon-btn" onClick={onToggleSidebar} title="展开菜单"><Icon name="panelRight" size={15} /></button>}
+        <button className="icon-btn topbar__exit" onClick={onBackToHome || onLogout} title={onBackToHome ? '返回工作空间' : '退出登录'} aria-label={onBackToHome ? '返回工作空间' : '退出登录'}><Icon name={onBackToHome ? 'arrowLeft' : 'logout'} size={15} /></button>
         {!hideTitle && !workspaceTabs?.length && <div className="topbar__title">{title}</div>}
       </div>
 
@@ -54,15 +53,14 @@ export default function TopBar({ title, workspaceTabs, activeWorkspaceTab, onWor
 
       <div className="topbar__right">
         <div className="topbar__tool-wrap" ref={reminderWrapRef}>
-          <button className={`icon-btn topbar__tool${reminderCount > 0 ? ' topbar__tool--has-reminders' : ''}`} onClick={() => { setReminderOpen((value) => !value); setSearchOpen(false) }} title="提醒：问题或任务即将过期" aria-label="打开提醒">
+          <button className={`icon-btn topbar__tool${reminderCount > 0 ? ' topbar__tool--has-reminders' : ''}`} onClick={() => { setReminderOpen((value) => !value); setSearchOpen(false) }} title="打开提醒" aria-label="打开提醒">
             <Icon name="bell" size={16} />
             {reminderCount > 0 && <span className="topbar__badge">{reminderCount > 9 ? '9+' : reminderCount}</span>}
           </button>
-          {reminderOpen && <div className="topbar__popover"><strong>提醒</strong>{reminderItems.length ? <div className="topbar__reminder-list">{reminderItems.map((item) => <button type="button" key={item.id} className="topbar__reminder-item" onClick={() => { onReminderClick?.(item); setReminderOpen(false) }}><span>{item.kind === 'task' ? '任务' : '问题'} · {item.title}</span><small>截止 {item.dueDate}</small></button>)}</div> : <span>暂无 24 小时内到期的任务或问题</span>}</div>}
+          {reminderOpen && <div className="topbar__popover"><strong>提醒</strong>{reminderItems.length ? <div className="topbar__reminder-list">{reminderItems.map((item) => <button type="button" key={item.id} className="topbar__reminder-item" onClick={() => { onReminderClick?.(item); setReminderOpen(false) }}><span>{item.kind === 'task' ? '任务' : item.kind === 'issue' ? '问题' : '需求'} · {item.title}</span><small>截止 {item.dueDate}</small></button>)}</div> : <span>暂无 24 小时内到期的内容</span>}</div>}
         </div>
         {onSearchChange && <button className={`icon-btn topbar__tool${searchOpen || searchQuery ? ' topbar__tool--active' : ''}`} onClick={() => { setSearchOpen((value) => !value); setReminderOpen(false) }} title="搜索" aria-label="打开搜索"><Icon name="search" size={16} /></button>}
         {onSummaryClick && <button className="icon-btn topbar__tool" onClick={() => { setSearchOpen(false); setReminderOpen(false); onSummaryClick() }} title="查看总结" aria-label="打开总结"><Icon name="summary" size={16} /></button>}
-        <button className="icon-btn" onClick={onBackToHome || onLogout} title={onBackToHome ? '返回工作空间' : '退出登录'}><Icon name={onBackToHome ? 'arrowLeft' : 'logout'} size={15} /></button>
       </div>
     </header>
   )

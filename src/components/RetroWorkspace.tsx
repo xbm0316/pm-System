@@ -27,10 +27,6 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
   const [previewAttachment, setPreviewAttachment] = useState<ProjectTaskAttachment | null>(null)
   const [draggedTypeId, setDraggedTypeId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!types.length) onChange([{ id: `retro-${Date.now().toString(36)}`, spaceId, name: '通用', createdAt: Date.now() }], retros)
-  }, [onChange, retros, spaceId, types.length])
-
   const query = searchQuery.trim().toLocaleLowerCase()
   const cardsByType = useMemo(() => new Map(types.map((type) => [type.id, retros.filter((item) => item.typeId === type.id).filter((item) => !query || `${item.title} ${item.content}`.toLocaleLowerCase().includes(query)).sort((a, b) => b.createdAt - a.createdAt)])), [query, retros, types])
 
@@ -45,7 +41,8 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
     if (!selectedTypeId || !title.trim() || !content.trim()) return setError('请填写复盘类型、标题和内容')
     const now = Date.now()
     const id = `retro-${now.toString(36)}`
-    const results = await Promise.allSettled(selectedFiles.slice(0, 20).map((file) => uploadLocalFile(file, { spaceId, entityType: 'retro', entityId: id })))
+    const typeName = types.find((type) => type.id === selectedTypeId)?.name || selectedTypeId
+    const results = await Promise.allSettled(selectedFiles.slice(0, 20).map((file) => uploadLocalFile(file, { spaceId, entityType: 'retro', entityId: id, pathSegments: ['复盘', typeName] })))
     const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
     if (results.some((result) => result.status === 'rejected')) setError('部分附件上传失败，请确认已选择本地文件夹并授予写入权限')
     onChange(types, [{ id, spaceId, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, createdAt: now, updatedAt: now }, ...retros])
@@ -55,7 +52,8 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
   async function saveEdit() {
     if (!editing || !selectedTypeId || !title.trim() || !content.trim()) return setError('请填写复盘类型、标题和内容')
     const now = Date.now()
-    const results = selectedFiles.length ? await Promise.allSettled(selectedFiles.slice(0, 20 - (editing.attachments || []).length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'retro', entityId: editing.id }))) : []
+    const typeName = types.find((type) => type.id === selectedTypeId)?.name || selectedTypeId
+    const results = selectedFiles.length ? await Promise.allSettled(selectedFiles.slice(0, 20 - (editing.attachments || []).length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'retro', entityId: editing.id, pathSegments: ['复盘', typeName] }))) : []
     const added = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
     const attachments = selectedFiles.length ? [...(editing.attachments || []), ...added] : editing.attachments
     if (results.some((result) => result.status === 'rejected')) setError('部分附件上传失败，请确认已选择本地文件夹并授予写入权限')

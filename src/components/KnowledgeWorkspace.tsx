@@ -61,10 +61,6 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
   const [error, setError] = useState('')
   const [draggedTypeId, setDraggedTypeId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!types.length) onChange([{ id: `knowledge-${Date.now().toString(36)}`, spaceId, name: '通用', createdAt: Date.now() }], resources)
-  }, [onChange, resources, spaceId, types.length])
-
   const query = searchQuery.trim().toLocaleLowerCase()
   const resourcesByType = useMemo(() => new Map(types.map((type) => [type.id, resources.filter((item) => item.typeId === type.id).filter((item) => !query || `${item.name} ${item.fileName} ${item.mimeType}`.toLocaleLowerCase().includes(query)).sort((a, b) => b.createdAt - a.createdAt)])), [query, resources, types])
 
@@ -107,7 +103,8 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
     setUploading(true); setError('')
     const now = Date.now()
     const draftIds = selectedFiles.map((_, index) => `knowledge-${(now + index).toString(36)}`)
-    const results = await Promise.allSettled(selectedFiles.map((file, index) => uploadLocalFile(file, { spaceId, entityType: 'knowledge', entityId: draftIds[index] })))
+    const typeName = types.find((type) => type.id === selectedTypeId)?.name || selectedTypeId
+    const results = await Promise.allSettled(selectedFiles.map((file, index) => uploadLocalFile(file, { spaceId, entityType: 'knowledge', entityId: draftIds[index], pathSegments: ['知识库', typeName] })))
     const successful = results.flatMap((result, index) => result.status === 'fulfilled' ? [{ id: draftIds[index], spaceId, typeId: selectedTypeId, name: resourceName.trim() && selectedFiles.length === 1 ? resourceName.trim() : selectedFiles[index].name, fileName: selectedFiles[index].name, mimeType: selectedFiles[index].type || 'application/octet-stream', size: selectedFiles[index].size, fileId: result.value.fileId, fileUrl: result.value.url, createdAt: now + index, updatedAt: now + index }] : [])
     const failedFiles = selectedFiles.filter((_, index) => results[index].status === 'rejected')
     if (successful.length) onChange(types, [...successful, ...resources])
@@ -143,7 +140,8 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
       nextMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; replacement = new Blob([binary], { type: nextMimeType })
     }
     if (replacement) {
-      const uploaded = await uploadLocalFile(replacement, { spaceId, entityType: 'knowledge', entityId: detail.id, fileName: detail.fileName })
+      const typeName = types.find((type) => type.id === detail.typeId)?.name || detail.typeId
+      const uploaded = await uploadLocalFile(replacement, { spaceId, entityType: 'knowledge', entityId: detail.id, fileName: detail.fileName, pathSegments: ['知识库', typeName] })
       nextFileId = uploaded.fileId; nextFileUrl = uploaded.url; nextSize = replacement.size
       await deleteLocalFile(detail.fileId)
     }

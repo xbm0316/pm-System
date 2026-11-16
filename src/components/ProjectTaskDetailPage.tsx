@@ -9,6 +9,7 @@ type TaskTab = 'content' | 'issues'
 
 interface Props {
   spaceId: string
+  projectName?: string
   task: ProjectTask
   issues: ProjectIssue[]
   onStatusChange: (taskId: string, status: TaskStatus) => void
@@ -20,7 +21,7 @@ interface Props {
 
 const issueStatuses: ProjectIssueStatus[] = ['待处理', '处理中', '已处理']
 
-export default function ProjectTaskDetailPage({ spaceId, task, issues, onStatusChange, onAddIssue, onUpdateIssue, onUpdateTask, onClose }: Props) {
+export default function ProjectTaskDetailPage({ spaceId, projectName, task, issues, onStatusChange, onAddIssue, onUpdateIssue, onUpdateTask, onClose }: Props) {
   const [tab, setTab] = useState<TaskTab>('content')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -84,7 +85,7 @@ export default function ProjectTaskDetailPage({ spaceId, task, issues, onStatusC
       return
     }
     if (incoming.length === files.length) setAttachmentError('')
-    const results = await Promise.allSettled(incoming.map((file) => uploadLocalFile(file, { spaceId, entityType: 'task', entityId: task.id })))
+    const results = await Promise.allSettled(incoming.map((file) => uploadLocalFile(file, { spaceId, entityType: 'task', entityId: task.id, pathSegments: ['项目', projectName || task.projectId, '任务', task.name] })))
     const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
     const failed = results.length - attachments.length
     if (attachments.length) onUpdateTask(task.id, { attachments: [...(task.attachments || []), ...attachments] })

@@ -48,7 +48,12 @@ function unsupportedError() {
 }
 
 function safeSegment(value: string, fallback: string) {
-  const safe = String(value || fallback).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
+  const safe = String(value || fallback)
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/g, '')
+    .slice(0, 120)
   return safe || fallback
 }
 
@@ -183,12 +188,28 @@ export async function registerLocalFileServiceWorker() {
   } catch (error) { console.warn('local file service worker unavailable', error) }
 }
 
-export async function uploadLocalFile(file: File | Blob, context: { spaceId: string; entityType: string; entityId: string; fileName?: string }) {
+export async function uploadLocalFile(file: File | Blob, context: { spaceId: string; entityType: string; entityId: string; fileName?: string; pathSegments?: string[] }) {
   const root = await ensureDirectoryHandle()
   const id = crypto.randomUUID()
   const originalName = context.fileName || (file instanceof File ? file.name : 'attachment')
-  const relativePath = ['uploads', safeSegment(context.spaceId, 'default-space'), safeSegment(context.entityType, 'generic'), safeSegment(context.entityId, 'unassigned'), `${id}${extension(originalName)}`].join('/')
-  const target = await getFileHandle(root, relativePath, true)
+  const baseSegments = context.pathSegments?.length ? context.pathSegments : [context.spaceId, context.entityType, context.entityId]
+  const cleanName = safeSegment(originalName, `attachment${extension(originalName)}`)
+  const directorySegments = ['upload', ...baseSegments.map((segment) => safeSegment(segment, 'unassigned'))]
+  let relativePath = [...directorySegments, cleanName].join('/')
+  let target: FileSystemFileHandle
+  let suffix = 1
+  while (true) {
+    try {
+      target = await getFileHandle(root, relativePath, false)
+      const stem = cleanName.replace(/(\.[^.]*)$/, '')
+      const ext = (cleanName.match(/(\.[^.]*)$/) || [''])[0]
+      relativePath = [...directorySegments, `${stem}-${suffix}${ext}`].join('/')
+      suffix += 1
+    } catch {
+      target = await getFileHandle(root, relativePath, true)
+      break
+    }
+  }
   const writable = await target.createWritable()
   await writable.write(file)
   await writable.close()

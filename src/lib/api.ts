@@ -12,7 +12,11 @@ import type {
 // ---------- 映射：DB 行 -> 前端对象 ----------
 
 function toSpace(r: any): Space {
-  return { id: r.id, name: r.name, types: ['项目经理'], createdAt: Number(r.created_at) }
+  const savedTypes = Array.isArray(r.types) ? r.types : []
+  const types = savedTypes.filter((type: unknown): type is TypeName => (
+    type === '产品经理' || type === '项目经理' || type === '独立站电商运营'
+  ))
+  return { id: r.id, name: r.name, types: types.length > 0 ? types : ['项目经理'], createdAt: Number(r.created_at) }
 }
 
 function toReq(r: any): Requirement {
@@ -25,6 +29,7 @@ function toReq(r: any): Requirement {
     priority: (r.priority || 'P1') as Priority,
     status: (r.status || '调研中') as RequirementStatus,
     createdAt: Number(r.created_at),
+    launchDate: r.launch_date || undefined,
     competitorIds: Array.isArray(r.competitor_ids) ? r.competitor_ids : undefined,
     prd: r.prd || undefined,
   }
@@ -74,11 +79,20 @@ export async function fetchRequirements(): Promise<Requirement[]> {
 }
 
 export async function insertRequirement(r: Requirement) {
-  const { error } = await supabase.from('requirements').insert({
+  const payload = {
     id: r.id, space_id: r.spaceId, version: r.version, name: r.name,
-    content: r.content, priority: r.priority, status: r.status, created_at: r.createdAt,
-  })
-  if (error) console.error('insertRequirement', error)
+    content: r.content, priority: r.priority, status: r.status, launch_date: r.launchDate || null, competitor_ids: r.competitorIds || null, created_at: r.createdAt,
+  }
+  const { error } = await supabase.from('requirements').insert(payload)
+  if (error) {
+    const competitorFallback = { ...payload, competitor_ids: undefined }
+    const fallback = await supabase.from('requirements').insert(competitorFallback)
+    if (fallback.error && Object.prototype.hasOwnProperty.call(payload, 'launch_date')) {
+      const legacyFallback = { ...competitorFallback, launch_date: undefined }
+      const legacyResult = await supabase.from('requirements').insert(legacyFallback)
+      if (legacyResult.error) console.error('insertRequirement', legacyResult.error)
+    } else if (fallback.error) console.error('insertRequirement', fallback.error)
+  }
 }
 
 export async function updateRequirementAttachments(id: string, attachments: Requirement['attachments']) {
@@ -89,6 +103,34 @@ export async function updateRequirementAttachments(id: string, attachments: Requ
 export async function updateRequirementStatus(id: string, status: RequirementStatus) {
   const { error } = await supabase.from('requirements').update({ status }).eq('id', id)
   if (error) console.error('updateRequirementStatus', error)
+}
+
+export async function updateRequirement(id: string, patch: Partial<Requirement>) {
+  const payload: Record<string, unknown> = {}
+  if (patch.version !== undefined) payload.version = patch.version
+  if (patch.name !== undefined) payload.name = patch.name
+  if (patch.content !== undefined) payload.content = patch.content
+  if (patch.priority !== undefined) payload.priority = patch.priority
+  if (patch.status !== undefined) payload.status = patch.status
+  if (patch.launchDate !== undefined) payload.launch_date = patch.launchDate || null
+  if (patch.competitorIds !== undefined) payload.competitor_ids = patch.competitorIds || null
+  if (!Object.keys(payload).length) return
+  const { error } = await supabase.from('requirements').update(payload).eq('id', id)
+  if (error && Object.prototype.hasOwnProperty.call(payload, 'competitor_ids')) {
+    const fallback = { ...payload }
+    delete fallback.competitor_ids
+    const retry = await supabase.from('requirements').update(fallback).eq('id', id)
+    if (retry.error && Object.prototype.hasOwnProperty.call(payload, 'launch_date')) {
+      delete fallback.launch_date
+      const legacyRetry = await supabase.from('requirements').update(fallback).eq('id', id)
+      if (legacyRetry.error) console.error('updateRequirement', legacyRetry.error)
+    } else if (retry.error) console.error('updateRequirement', retry.error)
+  } else if (error && Object.prototype.hasOwnProperty.call(payload, 'launch_date')) {
+    const fallback = { ...payload }
+    delete fallback.launch_date
+    const retry = await supabase.from('requirements').update(fallback).eq('id', id)
+    if (retry.error) console.error('updateRequirement', retry.error)
+  } else if (error) console.error('updateRequirement', error)
 }
 
 export async function deleteRequirementRow(id: string) {

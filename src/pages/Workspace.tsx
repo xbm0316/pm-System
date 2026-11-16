@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import TopBar from '../components/TopBar'
-import Icon from '../components/Icon'
 import ReqPool from '../components/ReqPool'
 import CompAnalysis from '../components/CompAnalysis'
 import RequirementDetailPage from '../components/RequirementDetailPage'
 import ProjectManagerBoard from '../components/ProjectManagerBoard'
+import OperationsWorkspace from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
 import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type Retro, type RequirementPrd, type MeetingRecord, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
-import { fetchRequirements, insertRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, fetchRetros, insertRetro, deleteRequirementRow } from '../lib/api'
+import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, fetchRetros, insertRetro, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
 
 interface Props {
@@ -16,10 +16,12 @@ interface Props {
 }
 
 export default function Workspace({ space, onBackToHome }: Props) {
+  const isProductManager = space.types.includes('产品经理')
+  const isOperationsManager = !isProductManager && space.types.includes('独立站电商运营')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTabKey>('workbench')
   const [searchQuery, setSearchQuery] = useState('')
   const [reminderCount, setReminderCount] = useState(0)
-  const [reminderItems, setReminderItems] = useState<{ id: string; kind: 'task' | 'issue'; title: string; dueDate: string; taskId: string; projectId: string }[]>([])
+  const [reminderItems, setReminderItems] = useState<{ id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string; projectId?: string }[]>([])
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [workspaceRevision, setWorkspaceRevision] = useState(0)
   const [summaryOpen, setSummaryOpen] = useState(false)
@@ -27,7 +29,7 @@ export default function Workspace({ space, onBackToHome }: Props) {
   const [summaryTasks, setSummaryTasks] = useState<ProjectTask[]>([])
   const [summaryIssues, setSummaryIssues] = useState<ProjectIssue[]>([])
   const [summaryRecords, setSummaryRecords] = useState<ProjectSummary[]>([])
-  const [activeMenu, setActiveMenu] = useState('req')
+  const [activeMenu, setActiveMenu] = useState(isOperationsManager ? 'prod' : isProductManager ? 'req' : 'proj')
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [addSignal, setAddSignal] = useState<Record<string, number>>({})
   const [requirements, setRequirements] = useState<Requirement[]>([])
@@ -36,20 +38,39 @@ export default function Workspace({ space, onBackToHome }: Props) {
   const [prdDocs, setPrdDocs] = useState<Record<string, RequirementPrd>>({})
 
   useEffect(() => {
+    setActiveWorkspaceTab('workbench')
+    setActiveMenu(isOperationsManager ? 'prod' : isProductManager ? 'req' : 'proj')
+    setDetailTarget(null)
+    setOpenTaskId(null)
+    setSearchQuery('')
+    setRequirements([])
+    setCompetitors([])
+    setRetros([])
+    let cancelled = false
     void (async () => {
       const [rs, cs, rt] = await Promise.all([fetchRequirements(), fetchCompetitors(), fetchRetros()])
       const requirementsWithLocalFiles = await Promise.all(rs.map(async (requirement) => ({
         ...requirement,
         attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
       })))
+      if (cancelled) return
       setRequirements(requirementsWithLocalFiles)
       setCompetitors(cs)
       setRetros(rt)
     })()
-  }, [])
+    return () => { cancelled = true }
+  }, [space.id, isOperationsManager, isProductManager])
 
-  const isProductManager = space.types.includes('产品经理')
-  const menus = MENUS['产品经理']
+  useEffect(() => {
+    if (!isProductManager) return
+    const now = Date.now()
+    const requirementsWithinDay = requirements
+      .filter((item) => item.launchDate)
+      .map((item) => ({ item, time: new Date(item.launchDate as string).getTime() }))
+      .filter(({ time }) => time > now && time - now < 24 * 60 * 60 * 1000)
+      .map(({ item }) => ({ id: `requirement-${item.id}`, kind: 'requirement' as const, title: item.name, dueDate: (item.launchDate as string).slice(0, 10), reqId: item.id }))
+    setReminderItems(requirementsWithinDay)
+  }, [isProductManager, requirements])
 
   function loadSummaryData() {
     try {
@@ -111,20 +132,34 @@ export default function Workspace({ space, onBackToHome }: Props) {
     void updateRequirementAttachments(reqId, attachments)
   }
 
+  function updateRequirementFields(reqId: string, patch: Partial<Requirement>) {
+    setRequirements((prev) => prev.map((item) => item.id === reqId ? { ...item, ...patch } : item))
+    void updateRequirement(reqId, patch)
+  }
+
   function renderProductContent() {
     if (detailTarget) {
       const target = requirements.find((item) => item.id === detailTarget)
       if (!target) return null
-      return <RequirementDetailPage requirement={{ ...target, prd: prdDocs[target.id] || target.prd }} requirements={requirements} competitors={competitors} retros={retros} onStatusChange={updateReqStatus} onSavePrd={savePrd} onUpdateMeetings={updateRequirementMeetings} onUpdateAttachments={updateRequirementFiles} onAddRetro={(retro) => { setRetros((prev) => [...prev, retro]); void insertRetro(retro) }} onClose={() => setDetailTarget(null)} />
+      return <RequirementDetailPage requirement={{ ...target, prd: prdDocs[target.id] || target.prd }} requirements={requirements} competitors={competitors} retros={retros} onStatusChange={updateReqStatus} onSavePrd={savePrd} onUpdateMeetings={updateRequirementMeetings} onUpdateAttachments={updateRequirementFiles} onUpdateRequirement={updateRequirementFields} onAddRetro={(retro) => { setRetros((prev) => [...prev, retro]); void insertRetro(retro) }} onClose={() => setDetailTarget(null)} />
     }
-    if (activeMenu === 'req') return <ReqPool spaceId={space.id} requirements={requirements} activeReqId={detailTarget} onAdd={addRequirement} onOpenTrack={setDetailTarget} onDelete={deleteRequirement} openSignal={addSignal.req || 0} searchQuery={searchQuery} />
+    if (activeMenu === 'req') return <ReqPool spaceId={space.id} requirements={requirements} competitors={competitors} activeReqId={detailTarget} onAdd={addRequirement} onOpenTrack={setDetailTarget} onDelete={deleteRequirement} openSignal={addSignal.req || 0} searchQuery={searchQuery} />
     if (activeMenu === 'comp') return <CompAnalysis spaceId={space.id} competitors={competitors} onAdd={addCompetitor} openSignal={addSignal.comp || 0} searchQuery={searchQuery} />
     return <div className="empty" style={{ padding: '36px 12px' }}><div style={{ fontSize: 12.5 }}>该模块暂未开放</div></div>
   }
 
   const view = activeWorkspaceTab === 'retro' ? 'retro' : activeWorkspaceTab === 'knowledge' ? 'knowledge' : activeWorkspaceTab === 'meeting' ? 'meeting' : 'board'
-  function changeWorkspaceTab(key: WorkspaceTabKey) {
-    setActiveWorkspaceTab(key)
+  const workspaceTabs = isProductManager ? MENUS['产品经理'] : isOperationsManager ? MENUS['独立站电商运营'] : WORKSPACE_TABS
+  const activeTopTab = isProductManager || isOperationsManager ? activeMenu : activeWorkspaceTab
+
+  function changeWorkspaceTab(key: string) {
+    if (isProductManager || isOperationsManager) {
+      setActiveMenu(key)
+      setDetailTarget(null)
+      setSearchQuery('')
+      return
+    }
+    setActiveWorkspaceTab(key as WorkspaceTabKey)
     setDetailTarget(null)
     setOpenTaskId(null)
     setSearchQuery('')
@@ -132,14 +167,10 @@ export default function Workspace({ space, onBackToHome }: Props) {
   }
 
   return <>
-    <TopBar title={space.name} workspaceTabs={WORKSPACE_TABS} activeWorkspaceTab={activeWorkspaceTab} onWorkspaceTabChange={changeWorkspaceTab} onBackToHome={onBackToHome} hideTitle searchQuery={searchQuery} onSearchChange={setSearchQuery} reminderCount={reminderCount} reminderItems={reminderItems} onReminderClick={(item) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(item.taskId); setWorkspaceRevision((value) => value + 1) }} onSummaryClick={openSummary} />
+    <TopBar title={space.name} workspaceTabs={workspaceTabs} activeWorkspaceTab={activeTopTab} onWorkspaceTabChange={changeWorkspaceTab} onBackToHome={onBackToHome} hideTitle searchQuery={searchQuery} onSearchChange={setSearchQuery} reminderCount={isProductManager ? reminderItems.length : reminderCount} reminderItems={isProductManager ? reminderItems : reminderItems} onReminderClick={(item) => { if (item.kind === 'requirement' && item.reqId) { setActiveMenu('req'); setDetailTarget(item.reqId) } else if (item.taskId) { setActiveWorkspaceTab('workbench'); setOpenTaskId(item.taskId); setWorkspaceRevision((value) => value + 1) } }} onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary} />
     <div className={`main${isProductManager ? ' main--product' : ' main--project'}`}>
-      {isProductManager && view === 'board' && <aside className="sidebar">
-        <div className="sidebar__head"><span className="sidebar__label">产品工作台</span></div>
-        {menus.map((menu) => <button key={menu.key} className={`nav-item${activeMenu === menu.key ? ' nav-item--active' : ''}`} onClick={() => { setActiveMenu(menu.key); setDetailTarget(null) }}><Icon name={menu.icon} size={16} /><span>{menu.label}</span></button>)}
-      </aside>}
       <section className={`content${isProductManager ? ' content--product' : ' content--project'}`}>
-        {view === 'retro' || view === 'knowledge' || view === 'meeting' ? <ProjectManagerBoard spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} onOpenTask={(taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) }} onCloseTask={() => setOpenTaskId(null)} view={view} /> : isProductManager ? renderProductContent() : <ProjectManagerBoard spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} openTaskId={openTaskId} onCloseTask={() => setOpenTaskId(null)} view="board" />}
+        {isOperationsManager ? <OperationsWorkspace key={space.id} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : view === 'retro' || view === 'knowledge' || view === 'meeting' ? <ProjectManagerBoard key={space.id} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} onOpenTask={(taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) }} onCloseTask={() => setOpenTaskId(null)} view={view} /> : <ProjectManagerBoard key={space.id} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} openTaskId={openTaskId} onCloseTask={() => setOpenTaskId(null)} view="board" />}
       </section>
     </div>
     {summaryOpen && <SummaryWorkspace projects={summaryProjects} tasks={summaryTasks} issues={summaryIssues} summaries={summaryRecords} onChange={updateSummaryRecords} onClose={() => setSummaryOpen(false)} />}

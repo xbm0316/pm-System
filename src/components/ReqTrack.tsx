@@ -68,7 +68,7 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
     const idx = REQ_STATUSES.indexOf(r.status)
     const relatedCompetitors = r.competitorIds && r.competitorIds.length > 0
       ? competitors.filter((competitor) => r.competitorIds?.includes(competitor.id))
-      : competitors.filter((competitor) => competitor.spaceId === spaceId)
+      : []
     return (
       <>
         <div className="track-detail">
@@ -110,12 +110,11 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
           </div>
         </div>
 
-        {r.content && (
-          <div className="track-detail__content">
-            <div className="field-label">需求内容</div>
-            <div className="track-detail__text">{r.content}</div>
-          </div>
-        )}
+        <div className="track-detail__content">
+          <div className="track-detail__launch-inline"><span className="field-label">预计上线时间</span><strong>{r.launchDate ? r.launchDate.slice(0, 10) : '未设置'}</strong></div>
+          <div className="field-label">需求内容</div>
+          <div className="track-detail__text">{r.content || '暂无需求内容'}</div>
+        </div>
 
         <div className="track-detail__related">
           <div className="field-label">关联竞品</div>

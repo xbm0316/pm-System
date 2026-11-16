@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import TopBar from '../components/TopBar'
 import Icon from '../components/Icon'
-import { type Space, type TypeName } from '../lib/store'
+import { ALL_TYPES, type Space, type TypeName } from '../lib/store'
 
 interface Props {
   spaces: Space[]
@@ -23,6 +23,7 @@ export default function Home({
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newTypes, setNewTypes] = useState<TypeName[]>(['项目经理'])
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<Space | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -40,10 +41,15 @@ export default function Home({
 
   function submitCreate() {
     const name = newName.trim()
-    if (!name) return
-    onCreate(name, ['项目经理'])
+    if (!name || newTypes.length === 0) return
+    onCreate(name, newTypes)
     setShowCreate(false)
     setNewName('')
+    setNewTypes(['项目经理'])
+  }
+
+  function toggleType(type: TypeName) {
+    setNewTypes([type])
   }
 
   function submitRename() {
@@ -157,7 +163,15 @@ export default function Home({
             />
 
             <div className="field-label">空间类型</div>
-            <div className="space-type-fixed"><Icon name="grid" size={15} /> 项目经理</div>
+            <div className="type-list">
+              {ALL_TYPES.map((type) => {
+                const selected = newTypes.includes(type)
+                return <button type="button" key={type} className={`type-opt${selected ? ' type-opt--on' : ''}`} onClick={() => toggleType(type)}>
+                  <span className="type-opt__box">{selected && <span>✓</span>}</span>
+                  <span className="type-opt__label">{type}</span>
+                </button>
+              })}
+            </div>
 
             <div className="modal__actions">
               <button className="btn-ghost" onClick={() => setShowCreate(false)}>
@@ -166,7 +180,7 @@ export default function Home({
               <button
                 className="btn-primary"
                 onClick={submitCreate}
-                style={{ opacity: !newName.trim() ? 0.45 : 1 }}
+                style={{ opacity: !newName.trim() || newTypes.length === 0 ? 0.45 : 1 }}
               >
                 创建
               </button>

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react'
 import Icon from './Icon'
+import DatePicker from './DatePicker'
+import CompetitorMultiSelect from './CompetitorMultiSelect'
 import {
   REQ_STATUSES,
   PRIORITIES,
@@ -7,6 +9,7 @@ import {
   type RequirementAttachment,
   type Priority,
   type RequirementStatus,
+  type Competitor,
   uid,
 } from '../lib/store'
 import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
@@ -20,6 +23,7 @@ interface Props {
   activeReqId: string | null
   openSignal: number
   searchQuery?: string
+  competitors: Competitor[]
 }
 
 interface MiniScrollbarProps {
@@ -181,12 +185,14 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
   )
 }
 
-export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onDelete, activeReqId, openSignal, searchQuery = '' }: Props) {
+export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onDelete, activeReqId, openSignal, searchQuery = '', competitors }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [version, setVersion] = useState('V')
   const [name, setName] = useState('')
   const [content, setContent] = useState('')
   const [priority, setPriority] = useState<Priority>('P1')
+  const [launchDate, setLaunchDate] = useState('')
+  const [competitorIds, setCompetitorIds] = useState<string[]>([])
   const [attachments, setAttachments] = useState<RequirementAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Requirement | null>(null)
@@ -198,8 +204,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     if (openSignal !== consumedSignal.current) {
       consumedSignal.current = openSignal
       if (openSignal > 0) {
-        setVersion('V')
-        setShowForm(true)
+        openCreate()
       }
     }
   }, [openSignal])
@@ -226,9 +231,14 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
 
   function openCreate(prefillVersion = 'V') {
     setVersion(prefillVersion)
+    setName('')
+    setContent('')
+    setPriority('P1')
     setDraftId(uid())
     setAttachments([])
     setAttachmentError('')
+    setLaunchDate('')
+    setCompetitorIds([])
     setShowForm(true)
   }
 
@@ -243,6 +253,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
       priority,
       status: '调研中',
       createdAt: Date.now(),
+      launchDate: launchDate || undefined,
+      competitorIds: competitorIds.length ? competitorIds : undefined,
       attachments,
     })
     setShowForm(false)
@@ -250,6 +262,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     setName('')
     setContent('')
     setPriority('P1')
+    setLaunchDate('')
+    setCompetitorIds([])
     setAttachments([])
     setAttachmentError('')
     setDraftId(uid())
@@ -271,7 +285,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     if (attachments.length + valid.length > 20) return setAttachmentError('需求最多保留 20 个附件')
     if (attachments.reduce((total, item) => total + item.size, 0) + valid.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024) return setAttachmentError('需求附件总大小不能超过 50 MB')
     if (valid.length === incoming.length) setAttachmentError('')
-    const results = await Promise.allSettled(valid.map((file) => uploadLocalFile(file, { spaceId, entityType: 'requirement', entityId: draftId })))
+    const requirementName = name.trim() || draftId
+    const results = await Promise.allSettled(valid.map((file) => uploadLocalFile(file, { spaceId, entityType: 'requirement', entityId: draftId, pathSegments: ['需求', requirementName, '关联文件'] })))
     const next = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as RequirementAttachment[]
     const failed = results.length - next.length
     if (next.length) setAttachments((prev) => [...prev, ...next])
@@ -293,8 +308,9 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
   }
 
   return (
-    <>
-      <div className="status-groups-shell">
+    <div className="req-pool-page">
+      <div className="req-pool-toolbar"><div className="req-pool-toolbar__title">需求池</div><button type="button" className="btn-primary" onClick={() => openCreate()}><Icon name="plus" size={14} /> 新增需求</button></div>
+      <div className="status-groups-shell req-pool-shell">
         <div className="status-groups" ref={groupsRef}>
           {REQ_STATUSES.map((st) => (
             <StatusGroup
@@ -313,7 +329,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
 
       {showForm && (
         <div className="overlay" onClick={closeForm}>
-          <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+          <div className="modal modal--wide project-task-create-modal requirement-create-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="project-task-create-modal__content">
             <div className="modal__title">新增需求</div>
 
             <div className="form-row">
@@ -349,8 +366,13 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
               placeholder="背景、目标、验收标准…"
             />
 
+            <div className="requirement-create-inline-fields">
+              <div><div className="field-label" style={{ marginTop: 16 }}>预计上线时间</div><DatePicker value={launchDate.slice(0, 10)} onChange={setLaunchDate} label="预计上线日期" /></div>
+              <div><div className="field-label" style={{ marginTop: 16 }}>关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === spaceId)} value={competitorIds} onChange={setCompetitorIds} /></div>
+            </div>
+
             <div className="attachment-field">
-              <div className="field-label">附件</div>
+              <div className="field-label">关联资料</div>
               <label className="attachment-picker">
                 <input
                   type="file"
@@ -362,8 +384,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
                 />
                 <span className="attachment-picker__icon">+</span>
                 <span>
-                  <strong>添加图片或文件</strong>
-                  <small>支持同时选择多个附件，当前仅本地预览</small>
+                  <strong>添加关联资料</strong>
+                  <small>支持同时选择多个关联资料，当前仅本地预览</small>
                 </span>
               </label>
               {attachments.length > 0 && (
@@ -409,6 +431,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
               </div>
             </div>
 
+            </div>
             <div className="modal__actions">
               <button className="btn-ghost" onClick={closeForm}>
                 取消
@@ -436,6 +459,6 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
