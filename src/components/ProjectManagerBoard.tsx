@@ -6,6 +6,8 @@ import KnowledgeWorkspace from './KnowledgeWorkspace'
 import MeetingWorkspace from './MeetingWorkspace'
 import DateRangePicker from './DateRangePicker'
 import { PRIORITIES, PROJECT_STATUSES, TASK_STATUSES, uid, type KnowledgeResource, type Priority, type Project, type ProjectIssue, type ProjectStatus, type ProjectStore, type ProjectTask, type TaskStatus, type WorkspaceCollectionType, type WorkspaceRetro } from '../lib/store'
+import { localFileUrl } from '../lib/localFiles'
+import { deleteLocalFilesForEntity } from '../lib/localFiles'
 
 interface Props {
   spaceId: string
@@ -18,7 +20,16 @@ interface Props {
   view?: 'board' | 'retro' | 'knowledge' | 'meeting'
 }
 
-const STORAGE_PREFIX = 'jawcat.project-manager.v3.'
+const STORAGE_PREFIX = 'jawcat.project-manager.v4.'
+const LEGACY_STORAGE_PREFIX = 'jawcat.project-manager.v3.'
+
+function clearLegacyProjectStorage() {
+  if (typeof window === 'undefined') return
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index)
+    if (key?.startsWith(LEGACY_STORAGE_PREFIX)) localStorage.removeItem(key)
+  }
+}
 
 function normalizeTaskStatus(status: unknown): TaskStatus {
   if (TASK_STATUSES.includes(status as TaskStatus)) return status as TaskStatus
@@ -29,6 +40,11 @@ function normalizeTaskStatus(status: unknown): TaskStatus {
   return '调研中'
 }
 
+function normalizeAttachment<T extends { id: string; fileId?: string; url?: string }>(attachment: T): T {
+  const fileId = attachment.fileId || attachment.id
+  return { ...attachment, fileId, url: fileId ? localFileUrl(fileId) : attachment.url } as T
+}
+
 function readStore(spaceId: string): ProjectStore {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${spaceId}`)
@@ -36,12 +52,12 @@ function readStore(spaceId: string): ProjectStore {
     const parsed = JSON.parse(raw) as Partial<ProjectStore>
     return {
       projects: Array.isArray(parsed.projects) ? parsed.projects.map((project) => ({ ...project, status: PROJECT_STATUSES.includes(project.status as ProjectStatus) ? project.status as ProjectStatus : '调研中' })) : [],
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map((task) => ({ ...task, status: normalizeTaskStatus(task.status) })) : [],
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map((task) => ({ ...task, status: normalizeTaskStatus(task.status), attachments: Array.isArray(task.attachments) ? task.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
       issues: Array.isArray(parsed.issues) ? parsed.issues.map((issue) => ({ ...issue, status: (issue.status as string) === '已解决' ? '已处理' : issue.status || '待处理' })) : [],
       retroTypes: Array.isArray(parsed.retroTypes) ? parsed.retroTypes : [],
-      retros: Array.isArray(parsed.retros) ? parsed.retros : [],
+      retros: Array.isArray(parsed.retros) ? parsed.retros.map((retro) => ({ ...retro, attachments: Array.isArray(retro.attachments) ? retro.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
       knowledgeTypes: Array.isArray(parsed.knowledgeTypes) ? parsed.knowledgeTypes : [],
-      knowledgeResources: Array.isArray(parsed.knowledgeResources) ? parsed.knowledgeResources : [],
+      knowledgeResources: Array.isArray(parsed.knowledgeResources) ? parsed.knowledgeResources.filter((resource) => !resource.dataUrl).map((resource) => ({ ...resource, fileUrl: resource.fileId ? localFileUrl(resource.fileId) : resource.fileUrl })) : [],
       meetings: Array.isArray(parsed.meetings) ? parsed.meetings : [],
       summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
     }
@@ -59,6 +75,7 @@ function projectStatusClass(status: ProjectStatus) {
 }
 
 export default function ProjectManagerBoard({ spaceId, searchQuery = '', onRemindersChange, onReminders, openTaskId, onOpenTask, onCloseTask, view = 'board' }: Props) {
+  useEffect(() => { clearLegacyProjectStorage() }, [])
   const [store, setStore] = useState<ProjectStore>(() => readStore(spaceId))
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => readStore(spaceId).projects.find((project) => !project.archivedAt)?.id || null)
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
@@ -194,6 +211,7 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '', onRemin
   }
 
   function deleteTask(task: ProjectTask) {
+    void deleteLocalFilesForEntity('task', task.id)
     patchStore((current) => ({
       ...current,
       tasks: current.tasks.filter((item) => item.id !== task.id),
@@ -245,7 +263,7 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '', onRemin
   }
 
   if (activeTask) {
-    return <ProjectTaskDetailPage task={activeTask} issues={store.issues} onStatusChange={updateTaskStatus} onAddIssue={addIssue} onUpdateIssue={updateIssue} onUpdateTask={updateTask} onClose={() => { setDetailTaskId(null); onCloseTask?.() }} />
+    return <ProjectTaskDetailPage spaceId={spaceId} task={activeTask} issues={store.issues} onStatusChange={updateTaskStatus} onAddIssue={addIssue} onUpdateIssue={updateIssue} onUpdateTask={updateTask} onClose={() => { setDetailTaskId(null); onCloseTask?.() }} />
   }
 
   if (view === 'retro') {

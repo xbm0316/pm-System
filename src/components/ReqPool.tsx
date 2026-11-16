@@ -9,6 +9,7 @@ import {
   type RequirementStatus,
   uid,
 } from '../lib/store'
+import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
 
 interface Props {
   spaceId: string
@@ -189,6 +190,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
   const [attachments, setAttachments] = useState<RequirementAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Requirement | null>(null)
+  const [draftId, setDraftId] = useState(() => uid())
 
   const consumedSignal = useRef(openSignal)
 
@@ -224,13 +226,16 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
 
   function openCreate(prefillVersion = 'V') {
     setVersion(prefillVersion)
+    setDraftId(uid())
+    setAttachments([])
+    setAttachmentError('')
     setShowForm(true)
   }
 
   function submit() {
     if (!name.trim()) return
     onAdd({
-      id: uid(),
+      id: draftId,
       spaceId,
       version: version.trim() || 'V',
       name: name.trim(),
@@ -247,15 +252,18 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     setPriority('P1')
     setAttachments([])
     setAttachmentError('')
+    setDraftId(uid())
   }
 
   function closeForm() {
+    void Promise.all(attachments.map((attachment) => deleteLocalFile(attachment.fileId || attachment.id)))
     setShowForm(false)
     setAttachments([])
     setAttachmentError('')
+    setDraftId(uid())
   }
 
-  function addAttachments(files: FileList | null) {
+  async function addAttachments(files: FileList | null) {
     if (!files) return
     const incoming = Array.from(files)
     const valid = incoming.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
@@ -263,22 +271,17 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     if (attachments.length + valid.length > 20) return setAttachmentError('需求最多保留 20 个附件')
     if (attachments.reduce((total, item) => total + item.size, 0) + valid.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024) return setAttachmentError('需求附件总大小不能超过 50 MB')
     if (valid.length === incoming.length) setAttachmentError('')
-    Promise.allSettled(valid.map((file) => new Promise<RequirementAttachment>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => typeof reader.result === 'string' && reader.result.startsWith('data:') ? resolve({ id: uid(), name: file.name, type: file.type || 'application/octet-stream', size: file.size, url: reader.result, kind: file.type.startsWith('image/') ? 'image' : 'file' }) : reject(new Error('invalid data url'))
-      reader.onerror = () => reject(reader.error || new Error('file read failed'))
-      reader.readAsDataURL(file)
-    }))).then((results) => {
-      const next = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-      const failed = results.length - next.length
-      if (next.length) setAttachments((prev) => [...prev, ...next])
-      if (failed) setAttachmentError(`${failed} 个文件读取失败，请重新选择`)
-    })
+    const results = await Promise.allSettled(valid.map((file) => uploadLocalFile(file, { spaceId, entityType: 'requirement', entityId: draftId })))
+    const next = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as RequirementAttachment[]
+    const failed = results.length - next.length
+    if (next.length) setAttachments((prev) => [...prev, ...next])
+    if (failed) setAttachmentError(`${failed} 个文件上传失败，请确认已选择本地文件夹并授予写入权限`)
   }
 
   function removeAttachment(id: string) {
     setAttachments((prev) => {
       const item = prev.find((a) => a.id === id)
+      void deleteLocalFile(item?.fileId || item?.id)
       return prev.filter((a) => a.id !== id)
     })
   }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import Icon from './Icon'
 import type { ProjectTaskAttachment, WorkspaceCollectionType, WorkspaceRetro } from '../lib/store'
+import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
 
 interface Props {
   spaceId: string
@@ -40,32 +41,30 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
     onChange([...types, { id: `retro-${Date.now().toString(36)}`, spaceId, name, createdAt: Date.now() }], retros)
     setTypeName(''); setError(''); setShowCreateType(false)
   }
-  function readAttachment(file: File) {
-    return new Promise<ProjectTaskAttachment>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve({ id: `retro-file-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, name: file.name, type: file.type || 'application/octet-stream', size: file.size, url: String(reader.result || ''), kind: file.type.startsWith('image/') ? 'image' : 'file' })
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(file)
-    })
-  }
   async function addRetro() {
     if (!selectedTypeId || !title.trim() || !content.trim()) return setError('请填写复盘类型、标题和内容')
     const now = Date.now()
-    const attachments = (await Promise.all(selectedFiles.slice(0, 20).map(readAttachment))).filter((item) => item.size > 0 && item.size <= 15 * 1024 * 1024)
-    onChange(types, [{ id: `retro-${now.toString(36)}`, spaceId, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, createdAt: now, updatedAt: now }, ...retros])
+    const id = `retro-${now.toString(36)}`
+    const results = await Promise.allSettled(selectedFiles.slice(0, 20).map((file) => uploadLocalFile(file, { spaceId, entityType: 'retro', entityId: id })))
+    const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
+    if (results.some((result) => result.status === 'rejected')) setError('部分附件上传失败，请确认已选择本地文件夹并授予写入权限')
+    onChange(types, [{ id, spaceId, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, createdAt: now, updatedAt: now }, ...retros])
     setSelectedFiles([]); setShowCreateRetro(false)
   }
   function openEdit(item: WorkspaceRetro) { setEditing(item); setSelectedTypeId(item.typeId); setTitle(item.title); setContent(item.content); setSelectedFiles([]); setError('') }
   async function saveEdit() {
     if (!editing || !selectedTypeId || !title.trim() || !content.trim()) return setError('请填写复盘类型、标题和内容')
     const now = Date.now()
-    const attachments = selectedFiles.length ? [...(editing.attachments || []), ...(await Promise.all(selectedFiles.slice(0, 20 - (editing.attachments || []).length).map(readAttachment)))] : editing.attachments
+    const results = selectedFiles.length ? await Promise.allSettled(selectedFiles.slice(0, 20 - (editing.attachments || []).length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'retro', entityId: editing.id }))) : []
+    const added = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
+    const attachments = selectedFiles.length ? [...(editing.attachments || []), ...added] : editing.attachments
+    if (results.some((result) => result.status === 'rejected')) setError('部分附件上传失败，请确认已选择本地文件夹并授予写入权限')
     onChange(types, retros.map((item) => item.id === editing.id ? { ...item, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, updatedAt: now } : item)); setEditing(null); setSelectedFiles([])
   }
   function onFiles(event: ChangeEvent<HTMLInputElement>) { setSelectedFiles((current) => [...current, ...Array.from(event.target.files || []).slice(0, 20 - current.length)]); event.target.value = '' }
-  function removeAttachment(item: WorkspaceRetro, attachment: ProjectTaskAttachment) { const next = { ...item, attachments: (item.attachments || []).filter((entry) => entry.id !== attachment.id), updatedAt: Date.now() }; onChange(types, retros.map((entry) => entry.id === item.id ? next : entry)); setDetail(next); setPreviewAttachment(null) }
-  function removeType() { if (!deleteType) return; onChange(types.filter((type) => type.id !== deleteType.id), retros.filter((item) => item.typeId !== deleteType.id)); setDeleteType(null) }
-  function removeRetro() { if (!deleteRetro) return; onChange(types, retros.filter((item) => item.id !== deleteRetro.id)); setDeleteRetro(null); setDetail(null) }
+  function removeAttachment(item: WorkspaceRetro, attachment: ProjectTaskAttachment) { void deleteLocalFile(attachment.fileId || attachment.id); const next = { ...item, attachments: (item.attachments || []).filter((entry) => entry.id !== attachment.id), updatedAt: Date.now() }; onChange(types, retros.map((entry) => entry.id === item.id ? next : entry)); setDetail(next); setPreviewAttachment(null) }
+  function removeType() { if (!deleteType) return; retros.filter((item) => item.typeId === deleteType.id).flatMap((item) => item.attachments || []).forEach((attachment) => void deleteLocalFile(attachment.fileId || attachment.id)); onChange(types.filter((type) => type.id !== deleteType.id), retros.filter((item) => item.typeId !== deleteType.id)); setDeleteType(null) }
+  function removeRetro() { if (!deleteRetro) return; (deleteRetro.attachments || []).forEach((attachment) => void deleteLocalFile(attachment.fileId || attachment.id)); onChange(types, retros.filter((item) => item.id !== deleteRetro.id)); setDeleteRetro(null); setDetail(null) }
   function moveType(targetId: string) {
     if (!draggedTypeId || draggedTypeId === targetId) return
     const from = types.findIndex((type) => type.id === draggedTypeId); const to = types.findIndex((type) => type.id === targetId); if (from < 0 || to < 0) return

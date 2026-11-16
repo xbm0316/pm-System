@@ -3,10 +3,12 @@ import Icon from './Icon'
 import DatePicker from './DatePicker'
 import DateRangePicker from './DateRangePicker'
 import { TASK_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type TaskStatus } from '../lib/store'
+import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
 
 type TaskTab = 'content' | 'issues'
 
 interface Props {
+  spaceId: string
   task: ProjectTask
   issues: ProjectIssue[]
   onStatusChange: (taskId: string, status: TaskStatus) => void
@@ -18,7 +20,7 @@ interface Props {
 
 const issueStatuses: ProjectIssueStatus[] = ['待处理', '处理中', '已处理']
 
-export default function ProjectTaskDetailPage({ task, issues, onStatusChange, onAddIssue, onUpdateIssue, onUpdateTask, onClose }: Props) {
+export default function ProjectTaskDetailPage({ spaceId, task, issues, onStatusChange, onAddIssue, onUpdateIssue, onUpdateTask, onClose }: Props) {
   const [tab, setTab] = useState<TaskTab>('content')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -65,7 +67,7 @@ export default function ProjectTaskDetailPage({ task, issues, onStatusChange, on
     setEditing(false)
   }
 
-  function addAttachments(event: ChangeEvent<HTMLInputElement>) {
+  async function addAttachments(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || [])
     if (!files.length) return
     const existing = task.attachments || []
@@ -82,28 +84,16 @@ export default function ProjectTaskDetailPage({ task, issues, onStatusChange, on
       return
     }
     if (incoming.length === files.length) setAttachmentError('')
-    Promise.allSettled(incoming.map((file) => new Promise<ProjectTaskAttachment>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve({
-        id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
-        name: file.name,
-        type: file.type || 'application/octet-stream',
-        size: file.size,
-        url: String(reader.result || ''),
-        kind: file.type.startsWith('image/') ? 'image' : 'file',
-      })
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(file)
-    }))).then((results) => {
-      const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-      const failed = results.length - attachments.length
-      if (attachments.length) onUpdateTask(task.id, { attachments: [...(task.attachments || []), ...attachments] })
-      if (failed) setAttachmentError(`${failed} 个文件读取失败，请重新选择`)
-    })
+    const results = await Promise.allSettled(incoming.map((file) => uploadLocalFile(file, { spaceId, entityType: 'task', entityId: task.id })))
+    const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
+    const failed = results.length - attachments.length
+    if (attachments.length) onUpdateTask(task.id, { attachments: [...(task.attachments || []), ...attachments] })
+    if (failed) setAttachmentError(`${failed} 个文件上传失败，请确认已选择本地文件夹并授予写入权限`)
     event.target.value = ''
   }
 
   function removeAttachment(attachment: ProjectTaskAttachment) {
+    void deleteLocalFile(attachment.fileId || attachment.id)
     onUpdateTask(task.id, { attachments: (task.attachments || []).filter((item) => item.id !== attachment.id) })
     setDeleteAttachment(null)
     if (previewAttachment?.id === attachment.id) setPreviewAttachment(null)

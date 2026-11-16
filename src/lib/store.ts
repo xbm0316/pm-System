@@ -87,6 +87,7 @@ export interface ProjectIssue {
 
 export interface ProjectTaskAttachment {
   id: string
+  fileId?: string
   name: string
   type: string
   size: number
@@ -143,6 +144,7 @@ export interface RequirementPrd {
 
 export interface RequirementAttachment {
   id: string
+  fileId?: string
   name: string
   type: string
   size: number
@@ -225,7 +227,10 @@ export interface KnowledgeResource {
   fileName: string
   mimeType: string
   size: number
-  dataUrl: string
+  fileId?: string
+  fileUrl?: string
+  /** @deprecated Legacy records may still contain a data URL until they are cleared. */
+  dataUrl?: string
   createdAt: number
   updatedAt?: number
   rotation?: number

@@ -8,6 +8,7 @@ import ProjectManagerBoard from '../components/ProjectManagerBoard'
 import SummaryWorkspace from '../components/SummaryWorkspace'
 import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type Retro, type RequirementPrd, type MeetingRecord, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
 import { fetchRequirements, insertRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, fetchRetros, insertRetro, deleteRequirementRow } from '../lib/api'
+import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
 
 interface Props {
   space: Space
@@ -37,7 +38,11 @@ export default function Workspace({ space, onBackToHome }: Props) {
   useEffect(() => {
     void (async () => {
       const [rs, cs, rt] = await Promise.all([fetchRequirements(), fetchCompetitors(), fetchRetros()])
-      setRequirements(rs)
+      const requirementsWithLocalFiles = await Promise.all(rs.map(async (requirement) => ({
+        ...requirement,
+        attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
+      })))
+      setRequirements(requirementsWithLocalFiles)
       setCompetitors(cs)
       setRetros(rt)
     })()
@@ -89,6 +94,7 @@ export default function Workspace({ space, onBackToHome }: Props) {
     setRetros((prev) => prev.filter((item) => item.reqId !== reqId))
     setDetailTarget((current) => current === reqId ? null : current)
     void deleteRequirementRow(reqId)
+    void deleteLocalFilesForEntity('requirement', reqId)
   }
 
   function savePrd(reqId: string, prd: RequirementPrd) {
