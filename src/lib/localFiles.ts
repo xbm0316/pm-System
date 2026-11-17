@@ -21,6 +21,7 @@ type DirectoryHandleWithPermission = DirectoryHandle & {
 type StoredFile = {
   id: string
   spaceId: string
+  ownerPhone?: string
   entityType: string
   entityId: string
   originalName: string
@@ -42,6 +43,10 @@ const HANDLE_STORE = 'settings'
 const LOCAL_FILE_PREFIX = '/local-files/'
 const objectUrls = new Map<string, string>()
 let directoryPromise: Promise<DirectoryHandle> | null = null
+
+function currentOwnerPhone() {
+  try { return localStorage.getItem('ws.session.v1') || 'anonymous' } catch { return 'anonymous' }
+}
 
 function unsupportedError() {
   return new Error('当前浏览器不支持本地文件夹保存，请使用 Chrome 或 Edge 桌面版')
@@ -194,6 +199,7 @@ export async function uploadLocalFile(file: File | Blob, context: { spaceId: str
   const originalName = context.fileName || (file instanceof File ? file.name : 'attachment')
   const baseSegments = context.pathSegments?.length ? context.pathSegments : [context.spaceId, context.entityType, context.entityId]
   const cleanName = safeSegment(originalName, `attachment${extension(originalName)}`)
+  // 保持现有业务路径层级；账号隔离通过 IndexedDB 的 ownerPhone 元数据完成。
   const directorySegments = ['upload', ...baseSegments.map((segment) => safeSegment(segment, 'unassigned'))]
   let relativePath = [...directorySegments, cleanName].join('/')
   let target: FileSystemFileHandle
@@ -215,7 +221,7 @@ export async function uploadLocalFile(file: File | Blob, context: { spaceId: str
   await writable.close()
   const blob = file instanceof Blob ? file : new Blob([file])
   const now = Date.now()
-  await idbPut(FILE_STORE, { id, spaceId: context.spaceId, entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now } satisfies StoredFile)
+  await idbPut(FILE_STORE, { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now } satisfies StoredFile)
   const objectUrl = URL.createObjectURL(blob)
   objectUrls.set(id, objectUrl)
   return { id, fileId: id, name: originalName, fileName: originalName, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size, kind: (file.type || '').startsWith('image/') ? 'image' as const : 'file' as const, url: objectUrl, relativePath, createdAt: now, updatedAt: now } satisfies LocalAttachment
@@ -234,7 +240,8 @@ export async function deleteLocalFile(fileId?: string) {
 }
 
 export async function listLocalFiles(entityType: string, entityId: string) {
-  const records = (await idbAll()).filter((record) => record.entityType === entityType && record.entityId === entityId)
+  const ownerPhone = currentOwnerPhone()
+  const records = (await idbAll()).filter((record) => record.entityType === entityType && record.entityId === entityId && (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041')))
   return records.map((record) => ({ id: record.id, fileId: record.id, name: record.originalName, fileName: record.originalName, type: record.mimeType, mimeType: record.mimeType, size: record.size, kind: record.mimeType.startsWith('image/') ? 'image' as const : 'file' as const, url: localFileUrl(record.id), relativePath: record.relativePath, createdAt: record.createdAt, updatedAt: record.createdAt }))
 }
 
@@ -244,7 +251,8 @@ export async function deleteLocalFilesForEntity(entityType: string, entityId: st
 }
 
 export async function deleteLocalFilesForSpace(spaceId: string) {
-  const records = (await idbAll()).filter((record) => record.spaceId === spaceId)
+  const ownerPhone = currentOwnerPhone()
+  const records = (await idbAll()).filter((record) => record.spaceId === spaceId && (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041')))
   await Promise.all(records.map((record) => deleteLocalFile(record.id)))
 }
 

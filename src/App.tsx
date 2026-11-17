@@ -19,7 +19,8 @@ export default function App() {
   }, [])
 
   async function reload() {
-    const list = await fetchSpaces()
+    if (!phone) return
+    const list = await fetchSpaces(phone)
     setSpaces(list)
     setLoading(false)
   }
@@ -43,17 +44,17 @@ export default function App() {
   async function createSpace(name: string, types: TypeName[]) {
     const s: Space = { id: uid(), name, types, createdAt: Date.now() }
     setSpaces((prev) => [...prev, s])
-    await insertSpace(s)
+    if (phone) await insertSpace(s, phone)
   }
 
   async function renameSpace(id: string, name: string) {
     setSpaces((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)))
-    await updateSpaceName(id, name)
+    if (phone) await updateSpaceName(id, name, phone)
   }
 
   async function deleteSpace(id: string) {
     setSpaces((prev) => prev.filter((s) => s.id !== id))
-    await deleteSpaceRow(id)
+    if (phone) await deleteSpaceRow(id, phone)
     await deleteLocalFilesForSpace(id)
   }
 
@@ -89,6 +90,7 @@ export default function App() {
     return (
       <Workspace
         space={activeSpace}
+        ownerPhone={phone}
         onBackToHome={() => setActiveSpaceId(null)}
       />
     )

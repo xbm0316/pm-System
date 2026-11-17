@@ -12,10 +12,11 @@ import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
 
 interface Props {
   space: Space
+  ownerPhone: string
   onBackToHome: () => void
 }
 
-export default function Workspace({ space, onBackToHome }: Props) {
+export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const isProductManager = space.types.includes('产品经理')
   const isOperationsManager = !isProductManager && space.types.includes('独立站电商运营')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTabKey>('workbench')
@@ -48,7 +49,8 @@ export default function Workspace({ space, onBackToHome }: Props) {
     setRetros([])
     let cancelled = false
     void (async () => {
-      const [rs, cs, rt] = await Promise.all([fetchRequirements(), fetchCompetitors(), fetchRetros()])
+      const rs = await fetchRequirements(space.id)
+      const [cs, rt] = await Promise.all([fetchCompetitors(space.id), fetchRetros(rs.map((requirement) => requirement.id))])
       const requirementsWithLocalFiles = await Promise.all(rs.map(async (requirement) => ({
         ...requirement,
         attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
@@ -59,7 +61,7 @@ export default function Workspace({ space, onBackToHome }: Props) {
       setRetros(rt)
     })()
     return () => { cancelled = true }
-  }, [space.id, isOperationsManager, isProductManager])
+  }, [ownerPhone, space.id, isOperationsManager, isProductManager])
 
   useEffect(() => {
     if (!isProductManager) return
@@ -74,7 +76,7 @@ export default function Workspace({ space, onBackToHome }: Props) {
 
   function loadSummaryData() {
     try {
-      const raw = localStorage.getItem(`jawcat.project-manager.v3.${space.id}`)
+      const raw = localStorage.getItem(`jawcat.project-manager.v4.${ownerPhone}.${space.id}`)
       const parsed = raw ? JSON.parse(raw) as Partial<{ projects: Project[]; tasks: ProjectTask[]; issues: ProjectIssue[]; summaries: ProjectSummary[] }> : {}
       setSummaryProjects(Array.isArray(parsed.projects) ? parsed.projects : [])
       setSummaryTasks(Array.isArray(parsed.tasks) ? parsed.tasks : [])
@@ -88,7 +90,7 @@ export default function Workspace({ space, onBackToHome }: Props) {
   function updateSummaryRecords(next: ProjectSummary[]) {
     setSummaryRecords(next)
     try {
-      const key = `jawcat.project-manager.v3.${space.id}`
+      const key = `jawcat.project-manager.v4.${ownerPhone}.${space.id}`
       const raw = localStorage.getItem(key)
       const parsed = raw ? JSON.parse(raw) : {}
       localStorage.setItem(key, JSON.stringify({ ...parsed, summaries: next }))
@@ -170,7 +172,7 @@ export default function Workspace({ space, onBackToHome }: Props) {
     <TopBar title={space.name} workspaceTabs={workspaceTabs} activeWorkspaceTab={activeTopTab} onWorkspaceTabChange={changeWorkspaceTab} onBackToHome={onBackToHome} hideTitle searchQuery={searchQuery} onSearchChange={setSearchQuery} reminderCount={isProductManager ? reminderItems.length : reminderCount} reminderItems={isProductManager ? reminderItems : reminderItems} onReminderClick={(item) => { if (item.kind === 'requirement' && item.reqId) { setActiveMenu('req'); setDetailTarget(item.reqId) } else if (item.taskId) { setActiveWorkspaceTab('workbench'); setOpenTaskId(item.taskId); setWorkspaceRevision((value) => value + 1) } }} onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary} />
     <div className={`main${isProductManager ? ' main--product' : ' main--project'}`}>
       <section className={`content${isProductManager ? ' content--product' : ' content--project'}`}>
-        {isOperationsManager ? <OperationsWorkspace key={space.id} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : view === 'retro' || view === 'knowledge' || view === 'meeting' ? <ProjectManagerBoard key={space.id} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} onOpenTask={(taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) }} onCloseTask={() => setOpenTaskId(null)} view={view} /> : <ProjectManagerBoard key={space.id} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} openTaskId={openTaskId} onCloseTask={() => setOpenTaskId(null)} view="board" />}
+        {isOperationsManager ? <OperationsWorkspace key={space.id} ownerPhone={ownerPhone} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : view === 'retro' || view === 'knowledge' || view === 'meeting' ? <ProjectManagerBoard key={space.id} ownerPhone={ownerPhone} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} onOpenTask={(taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) }} onCloseTask={() => setOpenTaskId(null)} view={view} /> : <ProjectManagerBoard key={space.id} ownerPhone={ownerPhone} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} openTaskId={openTaskId} onCloseTask={() => setOpenTaskId(null)} view="board" />}
       </section>
     </div>
     {summaryOpen && <SummaryWorkspace projects={summaryProjects} tasks={summaryTasks} issues={summaryIssues} summaries={summaryRecords} onChange={updateSummaryRecords} onClose={() => setSummaryOpen(false)} />}

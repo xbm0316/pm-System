@@ -11,6 +11,7 @@ import { deleteLocalFilesForEntity } from '../lib/localFiles'
 
 interface Props {
   spaceId: string
+  ownerPhone: string
   searchQuery?: string
   onRemindersChange?: (count: number) => void
   onReminders?: (items: { id: string; kind: 'task' | 'issue'; title: string; dueDate: string; taskId: string; projectId: string }[]) => void
@@ -43,9 +44,11 @@ function normalizeAttachment<T extends { id: string; fileId?: string; url?: stri
   return { ...attachment, fileId, url: fileId ? localFileUrl(fileId) : attachment.url } as T
 }
 
-function readStore(spaceId: string): ProjectStore {
+function readStore(ownerPhone: string, spaceId: string): ProjectStore {
   try {
-    const raw = localStorage.getItem(`${STORAGE_PREFIX}${spaceId}`)
+    const scopedKey = `${STORAGE_PREFIX}${ownerPhone}.${spaceId}`
+    const legacyKey = `${STORAGE_PREFIX}${spaceId}`
+    const raw = localStorage.getItem(scopedKey) || (ownerPhone === '13610392041' ? localStorage.getItem(legacyKey) : null)
     if (!raw) return { projects: [], tasks: [], issues: [], retroTypes: [], retros: [], knowledgeTypes: [], knowledgeResources: [], meetings: [], summaries: [] }
     const parsed = JSON.parse(raw) as Partial<ProjectStore>
     return {
@@ -72,10 +75,10 @@ function projectStatusClass(status: ProjectStatus) {
   return status === '调研中' ? 'research' : status === '已启动' ? 'reviewed' : status === '实施中' ? 'development' : status === '调试中' ? 'testing' : status === '验收中' ? 'reviewed' : status === '质保中' ? 'live' : 'complete'
 }
 
-export default function ProjectManagerBoard({ spaceId, searchQuery = '', onRemindersChange, onReminders, openTaskId, onOpenTask, onCloseTask, view = 'board' }: Props) {
+export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery = '', onRemindersChange, onReminders, openTaskId, onOpenTask, onCloseTask, view = 'board' }: Props) {
   useEffect(() => { clearLegacyProjectStorage() }, [])
-  const [store, setStore] = useState<ProjectStore>(() => readStore(spaceId))
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => readStore(spaceId).projects.find((project) => !project.archivedAt)?.id || null)
+  const [store, setStore] = useState<ProjectStore>(() => readStore(ownerPhone, spaceId))
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => readStore(ownerPhone, spaceId).projects.find((project) => !project.archivedAt)?.id || null)
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [projectParentId, setProjectParentId] = useState<string | undefined>()
@@ -114,8 +117,8 @@ export default function ProjectManagerBoard({ spaceId, searchQuery = '', onRemin
   }
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_PREFIX}${spaceId}`, JSON.stringify(store))
-  }, [spaceId, store])
+    localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(store))
+  }, [ownerPhone, spaceId, store])
 
   useEffect(() => {
     const current = store.projects.find((project) => project.id === activeProjectId && !project.archivedAt)

@@ -4,6 +4,7 @@ import { MENUS, uid } from '../lib/store'
 
 interface OperationsWorkspaceProps {
   spaceId: string
+  ownerPhone: string
   activeMenu: string
   searchQuery?: string
 }
@@ -18,9 +19,11 @@ interface OperationsRecord {
 
 const STORAGE_PREFIX = 'jawcat.operations.v1.'
 
-function readRecords(spaceId: string): OperationsRecord[] {
+function readRecords(ownerPhone: string, spaceId: string): OperationsRecord[] {
   try {
-    const raw = localStorage.getItem(`${STORAGE_PREFIX}${spaceId}`)
+    const scopedKey = `${STORAGE_PREFIX}${ownerPhone}.${spaceId}`
+    const legacyKey = `${STORAGE_PREFIX}${spaceId}`
+    const raw = localStorage.getItem(scopedKey) || (ownerPhone === '13610392041' ? localStorage.getItem(legacyKey) : null)
     const parsed = raw ? JSON.parse(raw) : []
     return Array.isArray(parsed) ? parsed : []
   } catch {
@@ -28,16 +31,16 @@ function readRecords(spaceId: string): OperationsRecord[] {
   }
 }
 
-export default function OperationsWorkspace({ spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
+export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
   const menus = MENUS['独立站电商运营']
-  const [records, setRecords] = useState<OperationsRecord[]>(() => readRecords(spaceId))
+  const [records, setRecords] = useState<OperationsRecord[]>(() => readRecords(ownerPhone, spaceId))
   const [showCreate, setShowCreate] = useState(false)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_PREFIX}${spaceId}`, JSON.stringify(records))
-  }, [records, spaceId])
+    localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(records))
+  }, [ownerPhone, records, spaceId])
 
   const activeMenuDef = menus.find((menu) => menu.key === activeMenu) || menus[0]
   const visibleRecords = useMemo(() => records
