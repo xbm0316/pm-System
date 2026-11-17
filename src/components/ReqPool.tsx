@@ -333,8 +333,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
             <div className="project-task-create-modal__content">
             <div className="modal__title">新增需求</div>
 
-            <div className="form-row">
-              <div style={{ flex: '0 0 110px' }}>
+            <div className="form-row requirement-form-meta-row">
+              <div className="requirement-form-version">
                 <div className="field-label">需求版本</div>
                 <input
                   className="text-input"
@@ -342,18 +342,32 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
                   onChange={(e) => setVersion(e.target.value)}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <div className="field-label">需求名称</div>
-                <input
-                  className="text-input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
-                  placeholder="一句话说清要做什么"
-                  autoFocus
-                />
+              <div className="requirement-form-priority">
+                <div className="field-label">优先级</div>
+                <div className="chip-row">
+                  {PRIORITIES.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`chip${priority === p ? ' chip--on' : ''}`}
+                      onClick={() => setPriority(p)}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+
+            <div className="field-label collection-field-gap">需求名称</div>
+            <input
+              className="text-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
+              placeholder="一句话说清要做什么"
+              autoFocus
+            />
 
             <div className="field-label" style={{ marginTop: 16 }}>
               需求内容
@@ -414,21 +428,6 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
                 </div>
               )}
               {attachmentError && <div className="form-error" role="alert">{attachmentError}</div>}
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <div className="field-label">优先级</div>
-              <div className="chip-row">
-                {PRIORITIES.map((p) => (
-                  <button
-                    key={p}
-                    className={`chip${priority === p ? ' chip--on' : ''}`}
-                    onClick={() => setPriority(p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
             </div>
 
             </div>

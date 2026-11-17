@@ -6,9 +6,24 @@ import RequirementDetailPage from '../components/RequirementDetailPage'
 import ProjectManagerBoard from '../components/ProjectManagerBoard'
 import OperationsWorkspace from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
-import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type Retro, type RequirementPrd, type MeetingRecord, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
-import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, fetchRetros, insertRetro, deleteRequirementRow } from '../lib/api'
+import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
+import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
+
+function previewRequirements(spaceId: string): Requirement[] {
+  const now = Date.now()
+  return (['调研中', '已评审', '开发中', '测试中', '已上线'] as RequirementStatus[]).flatMap((status, statusIndex) => Array.from({ length: 10 }, (_, index) => ({
+    id: `preview-req-${spaceId}-${statusIndex + 1}-${index + 1}`,
+    spaceId,
+    version: `V${statusIndex + 1}.${index + 1}`,
+    name: `${status}测试需求 ${index + 1}`,
+    content: `用于预览 ${status} 状态下的需求卡片、详情和 PRD 交互。`,
+    priority: (['P0', 'P1', 'P2', 'P3'] as const)[index % 4],
+    status,
+    createdAt: now - (statusIndex * 10 + index) * 60 * 60 * 1000,
+    launchDate: status === '已上线' ? new Date(now - index * 24 * 60 * 60 * 1000).toISOString() : new Date(now + (index + 1) * 24 * 60 * 60 * 1000).toISOString(),
+  })))
+}
 
 interface Props {
   space: Space
@@ -35,8 +50,6 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const [addSignal, setAddSignal] = useState<Record<string, number>>({})
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [competitors, setCompetitors] = useState<Competitor[]>([])
-  const [retros, setRetros] = useState<Retro[]>([])
-  const [prdDocs, setPrdDocs] = useState<Record<string, RequirementPrd>>({})
 
   useEffect(() => {
     setActiveWorkspaceTab('workbench')
@@ -46,11 +59,11 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     setSearchQuery('')
     setRequirements([])
     setCompetitors([])
-    setRetros([])
     let cancelled = false
     void (async () => {
-      const rs = await fetchRequirements(space.id)
-      const [cs, rt] = await Promise.all([fetchCompetitors(space.id), fetchRetros(rs.map((requirement) => requirement.id))])
+      const fetchedRequirements = await fetchRequirements(space.id)
+      const rs = import.meta.env.DEV && isProductManager && fetchedRequirements.length === 0 ? previewRequirements(space.id) : fetchedRequirements
+      const cs = await fetchCompetitors(space.id)
       const requirementsWithLocalFiles = await Promise.all(rs.map(async (requirement) => ({
         ...requirement,
         attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
@@ -58,7 +71,6 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
       if (cancelled) return
       setRequirements(requirementsWithLocalFiles)
       setCompetitors(cs)
-      setRetros(rt)
     })()
     return () => { cancelled = true }
   }, [ownerPhone, space.id, isOperationsManager, isProductManager])
@@ -114,19 +126,9 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
 
   function deleteRequirement(reqId: string) {
     setRequirements((prev) => prev.filter((item) => item.id !== reqId))
-    setRetros((prev) => prev.filter((item) => item.reqId !== reqId))
     setDetailTarget((current) => current === reqId ? null : current)
     void deleteRequirementRow(reqId)
     void deleteLocalFilesForEntity('requirement', reqId)
-  }
-
-  function savePrd(reqId: string, prd: RequirementPrd) {
-    setPrdDocs((prev) => ({ ...prev, [reqId]: prd }))
-    setRequirements((prev) => prev.map((item) => item.id === reqId ? { ...item, prd } : item))
-  }
-
-  function updateRequirementMeetings(reqId: string, meetings: MeetingRecord[]) {
-    setRequirements((prev) => prev.map((item) => item.id === reqId ? { ...item, meetings } : item))
   }
 
   function updateRequirementFiles(reqId: string, attachments: Requirement['attachments']) {
@@ -143,7 +145,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     if (detailTarget) {
       const target = requirements.find((item) => item.id === detailTarget)
       if (!target) return null
-      return <RequirementDetailPage requirement={{ ...target, prd: prdDocs[target.id] || target.prd }} requirements={requirements} competitors={competitors} retros={retros} onStatusChange={updateReqStatus} onSavePrd={savePrd} onUpdateMeetings={updateRequirementMeetings} onUpdateAttachments={updateRequirementFiles} onUpdateRequirement={updateRequirementFields} onAddRetro={(retro) => { setRetros((prev) => [...prev, retro]); void insertRetro(retro) }} onClose={() => setDetailTarget(null)} />
+      return <RequirementDetailPage requirement={target} requirements={requirements} competitors={competitors} onStatusChange={updateReqStatus} onUpdateAttachments={updateRequirementFiles} onUpdateRequirement={updateRequirementFields} onClose={() => setDetailTarget(null)} />
     }
     if (activeMenu === 'req') return <ReqPool spaceId={space.id} requirements={requirements} competitors={competitors} activeReqId={detailTarget} onAdd={addRequirement} onOpenTrack={setDetailTarget} onDelete={deleteRequirement} openSignal={addSignal.req || 0} searchQuery={searchQuery} />
     if (activeMenu === 'comp') return <CompAnalysis spaceId={space.id} competitors={competitors} onAdd={addCompetitor} openSignal={addSignal.comp || 0} searchQuery={searchQuery} />

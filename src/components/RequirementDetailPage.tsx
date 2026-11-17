@@ -1,48 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import ReqTrack from './ReqTrack'
-import ReqPrd from './ReqPrd'
-import RetroDialog from './RetroDialog'
-import type { Competitor, MeetingRecord, Requirement, RequirementAttachment, RequirementPrd, RequirementStatus, Retro } from '../lib/store'
+import type { Competitor, Requirement, RequirementAttachment, RequirementStatus } from '../lib/store'
 import DatePicker from './DatePicker'
 import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
 import CompetitorMultiSelect from './CompetitorMultiSelect'
 
-type DetailTab = 'progress' | 'prd' | 'retro'
 type RequirementDraft = Pick<Requirement, 'version' | 'name' | 'content' | 'priority' | 'status' | 'competitorIds'> & { launchDate: string }
 
 interface Props {
   requirement: Requirement
   requirements: Requirement[]
   competitors: Competitor[]
-  retros: Retro[]
   onStatusChange: (reqId: string, status: RequirementStatus) => void
-  onSavePrd: (reqId: string, prd: RequirementPrd) => void
-  onAddRetro: (retro: Retro) => void
-  onUpdateMeetings: (reqId: string, meetings: MeetingRecord[]) => void
   onUpdateAttachments: (reqId: string, attachments: RequirementAttachment[]) => void
   onUpdateRequirement: (reqId: string, patch: Partial<Requirement>) => void
   onClose: () => void
 }
 
-export default function RequirementDetailPage({ requirement, requirements, competitors, retros, onStatusChange, onSavePrd, onAddRetro, onUpdateMeetings, onUpdateAttachments, onUpdateRequirement, onClose }: Props) {
-  const [tab, setTab] = useState<DetailTab>('progress')
+export default function RequirementDetailPage({ requirement, requirements, competitors, onStatusChange, onUpdateAttachments, onUpdateRequirement, onClose }: Props) {
   const [editingRequirement, setEditingRequirement] = useState(false)
   const [draft, setDraft] = useState<RequirementDraft>({ version: requirement.version, name: requirement.name, content: requirement.content, priority: requirement.priority, status: requirement.status, launchDate: requirement.launchDate || '', competitorIds: requirement.competitorIds || [] })
   const [draftAttachments, setDraftAttachments] = useState<RequirementAttachment[]>(requirement.attachments || [])
   const [newAttachmentIds, setNewAttachmentIds] = useState<string[]>([])
   const [editAttachmentError, setEditAttachmentError] = useState('')
   const bodyRef = useRef<HTMLElement>(null)
-  const tabs: Array<{ key: DetailTab; label: string }> = [
-    { key: 'progress', label: '需求进度' },
-    { key: 'prd', label: 'PRD' },
-    { key: 'retro', label: '复盘' },
-  ]
-
-  useEffect(() => {
-    bodyRef.current?.scrollTo({ top: 0, behavior: 'auto' })
-  }, [tab])
-
   useEffect(() => {
     setDraft({ version: requirement.version, name: requirement.name, content: requirement.content, priority: requirement.priority, status: requirement.status, launchDate: requirement.launchDate || '', competitorIds: requirement.competitorIds || [] })
     setDraftAttachments(requirement.attachments || [])
@@ -111,60 +93,26 @@ export default function RequirementDetailPage({ requirement, requirements, compe
           <button className="icon-btn requirement-detail-page__back" type="button" onClick={onClose} title="返回需求池" aria-label="返回需求池">
             <Icon name="arrowLeft" size={16} />
           </button>
-          <div className="requirement-detail-page__identity">
+        <div className="requirement-detail-page__identity">
             <div className="requirement-detail-page__eyebrow">需求详情</div>
-            <h1><span className="requirement-detail-page__version">{requirement.version}</span><span className="requirement-detail-page__name">{requirement.name}</span><span className={`pri pri--${requirement.priority.toLowerCase()}`}>{requirement.priority}</span></h1>
+            <div className="requirement-detail-page__meta-row"><span className="requirement-detail-page__version">{requirement.version}</span><span className={`pri pri--${requirement.priority.toLowerCase()}`}>{requirement.priority}</span></div>
+            <h1><span className="requirement-detail-page__name">{requirement.name}</span></h1>
           </div>
         </div>
         <button type="button" className="icon-btn requirement-detail-page__edit-button" onClick={openRequirementEditor} title="编辑需求" aria-label="编辑需求"><Icon name="edit" size={15} /></button>
-        <div className="requirement-detail-page__tabs" role="tablist" aria-label="需求详情模块">
-          {tabs.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.key}
-              className={`detail-tab${tab === item.key ? ' detail-tab--active' : ''}`}
-              onClick={() => setTab(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
       </header>
 
       <main className="requirement-detail-page__body" ref={bodyRef}>
-        {tab === 'progress' && (
-          <ReqTrack
-            spaceId={requirement.spaceId}
-            requirements={requirements}
-            competitors={competitors}
-            onStatusChange={onStatusChange}
-            focusId={requirement.id}
-            onUpdateMeetings={onUpdateMeetings}
-            onUpdateAttachments={onUpdateAttachments}
-          />
-        )}
-        {tab === 'prd' && (
-          <ReqPrd
-            requirement={requirement}
-            mode="view"
-            embedded
-            onClose={onClose}
-            onSave={(prd) => onSavePrd(requirement.id, prd)}
-          />
-        )}
-        {tab === 'retro' && (
-          <RetroDialog
-            requirement={requirement}
-            retros={retros}
-            embedded
-            onAdd={onAddRetro}
-            onClose={onClose}
-          />
-        )}
+        <ReqTrack
+          spaceId={requirement.spaceId}
+          requirements={requirements}
+          competitors={competitors}
+          onStatusChange={onStatusChange}
+          focusId={requirement.id}
+          onUpdateAttachments={onUpdateAttachments}
+        />
       </main>
-      {editingRequirement && <div className="overlay requirement-edit-overlay" onClick={closeRequirementEditor}><form className="modal modal--wide project-task-create-modal requirement-edit-modal" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); saveRequirementEdit() }}><div className="project-task-create-modal__content"><div className="modal__title">编辑需求</div><div className="form-row"><div style={{ flex: '0 0 110px' }}><div className="field-label">需求版本</div><input className="text-input" value={draft.version} onChange={(event) => updateDraft({ version: event.target.value })} /></div><div style={{ flex: 1 }}><div className="field-label">需求名称 <span className="field-required">*</span></div><input className="text-input" value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} autoFocus required /></div></div><div className="field-label collection-field-gap">需求内容</div><textarea className="text-area" rows={5} value={draft.content} onChange={(event) => updateDraft({ content: event.target.value })} /><div className="requirement-edit-inline-fields"><div><div className="field-label">预计上线时间</div><DatePicker value={draft.launchDate.slice(0, 10)} onChange={(value) => updateDraft({ launchDate: value })} label="预计上线日期" /></div><div><div className="field-label">关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === requirement.spaceId)} value={draft.competitorIds || []} onChange={(value) => updateDraft({ competitorIds: value })} /></div></div><div className="field-label collection-field-gap">关联资料</div><label className="attachment-picker"><input type="file" multiple onChange={(event) => { void addEditAttachments(event.target.files); event.currentTarget.value = '' }} /><span className="attachment-picker__icon">+</span><span><strong>添加关联资料</strong><small>支持同时选择多个关联资料</small></span></label>{draftAttachments.length > 0 && <div className="attachment-list">{draftAttachments.map((attachment) => <div className="attachment-item" key={attachment.id}>{attachment.kind === 'image' ? <img className="attachment-item__thumb" src={attachment.url} alt={attachment.name} /> : <div className="attachment-item__file-icon">文件</div>}<div className="attachment-item__meta"><span>{attachment.name}</span><small>{Math.ceil(attachment.size / 1024)} KB</small></div><button type="button" className="attachment-item__remove" onClick={() => removeEditAttachment(attachment)} aria-label={`删除关联资料 ${attachment.name}`}>×</button></div>)}</div>}{editAttachmentError && <div className="form-error">{editAttachmentError}</div>}<div className="field-label collection-field-gap">优先级</div><div className="chip-row">{(['P0', 'P1', 'P2', 'P3'] as const).map((priority) => <button type="button" className={`chip${draft.priority === priority ? ' chip--on' : ''}`} key={priority} onClick={() => updateDraft({ priority })}>{priority}</button>)}</div></div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={closeRequirementEditor}>取消</button><button type="submit" className="btn-primary" disabled={!draft.name.trim()}>保存</button></div></form></div>}
+      {editingRequirement && <div className="overlay requirement-edit-overlay" onClick={closeRequirementEditor}><form className="modal modal--wide project-task-create-modal requirement-edit-modal" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); saveRequirementEdit() }}><div className="project-task-create-modal__content"><div className="modal__title">编辑需求</div><div className="form-row requirement-form-meta-row"><div className="requirement-form-version"><div className="field-label">需求版本</div><input className="text-input" value={draft.version} onChange={(event) => updateDraft({ version: event.target.value })} /></div><div className="requirement-form-priority"><div className="field-label">优先级</div><div className="chip-row">{(['P0', 'P1', 'P2', 'P3'] as const).map((priority) => <button type="button" className={`chip${draft.priority === priority ? ' chip--on' : ''}`} key={priority} onClick={() => updateDraft({ priority })}>{priority}</button>)}</div></div></div><div className="field-label collection-field-gap">需求名称 <span className="field-required">*</span></div><input className="text-input" value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} autoFocus required /><div className="field-label collection-field-gap">需求内容</div><textarea className="text-area" rows={5} value={draft.content} onChange={(event) => updateDraft({ content: event.target.value })} /><div className="requirement-edit-inline-fields"><div><div className="field-label">预计上线时间</div><DatePicker value={draft.launchDate.slice(0, 10)} onChange={(value) => updateDraft({ launchDate: value })} label="预计上线日期" /></div><div><div className="field-label">关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === requirement.spaceId)} value={draft.competitorIds || []} onChange={(value) => updateDraft({ competitorIds: value })} /></div></div><div className="field-label collection-field-gap">关联资料</div><label className="attachment-picker"><input type="file" multiple onChange={(event) => { void addEditAttachments(event.target.files); event.currentTarget.value = '' }} /><span className="attachment-picker__icon">+</span><span><strong>添加关联资料</strong><small>支持同时选择多个关联资料</small></span></label>{draftAttachments.length > 0 && <div className="attachment-list">{draftAttachments.map((attachment) => <div className="attachment-item" key={attachment.id}>{attachment.kind === 'image' ? <img className="attachment-item__thumb" src={attachment.url} alt={attachment.name} /> : <div className="attachment-item__file-icon">文件</div>}<div className="attachment-item__meta"><span>{attachment.name}</span><small>{Math.ceil(attachment.size / 1024)} KB</small></div><button type="button" className="attachment-item__remove" onClick={() => removeEditAttachment(attachment)} aria-label={`删除关联资料 ${attachment.name}`}>×</button></div>)}</div>}{editAttachmentError && <div className="form-error">{editAttachmentError}</div>}</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={closeRequirementEditor}>取消</button><button type="submit" className="btn-primary" disabled={!draft.name.trim()}>保存</button></div></form></div>}
     </div>
   )
 }

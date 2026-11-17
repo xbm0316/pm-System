@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon'
-import DatePicker from './DatePicker'
 import {
   REQ_STATUSES,
   type Requirement,
   type RequirementStatus,
   type RequirementAttachment,
   type Competitor,
-  type MeetingRecord,
-  uid,
 } from '../lib/store'
 import { deleteLocalFile } from '../lib/localFiles'
 
@@ -23,17 +20,12 @@ interface Props {
   focusId: string | null
   searchQuery?: string
   competitors: Competitor[]
-  onUpdateMeetings: (reqId: string, meetings: MeetingRecord[]) => void
   onUpdateAttachments: (reqId: string, attachments: RequirementAttachment[]) => void
 }
 
-export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '', competitors, onUpdateMeetings, onUpdateAttachments }: Props) {
+export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '', competitors, onUpdateAttachments }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [previewAttachment, setPreviewAttachment] = useState<RequirementAttachment | null>(null)
-  const [showMeetingForm, setShowMeetingForm] = useState(false)
-  const [meetingTitle, setMeetingTitle] = useState('')
-  const [meetingDate, setMeetingDate] = useState('')
-  const [meetingContent, setMeetingContent] = useState('')
   const [deleteAttachment, setDeleteAttachment] = useState<RequirementAttachment | null>(null)
 
   useEffect(() => {
@@ -52,16 +44,6 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
     .sort((a, b) => b.createdAt - a.createdAt)
   const detail = spaceList.find((r) => r.id === (detailId || focusId))
   const current = detail || (focusId ? spaceList.find((r) => r.id === focusId) : null)
-
-  function addMeeting(r: Requirement) {
-    if (!meetingTitle.trim() && !meetingContent.trim()) return
-    const meeting: MeetingRecord = { id: uid(), title: meetingTitle.trim() || '会议记录', date: meetingDate, content: meetingContent.trim() }
-    onUpdateMeetings(r.id, [...(r.meetings || []), meeting])
-    setMeetingTitle('')
-    setMeetingDate('')
-    setMeetingContent('')
-    setShowMeetingForm(false)
-  }
 
   if (detail || (focusId && current)) {
     const r = detail || current!
@@ -148,11 +130,6 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
           ) : (
             <div className="track-detail__empty">暂无关联资料</div>
           )}
-        </div>
-        <div className="track-detail__meeting">
-          <div className="track-detail__meeting-head"><div className="field-label">会议记录</div><button type="button" className="icon-btn" onClick={() => setShowMeetingForm((value) => !value)} title="新增会议记录" aria-label="新增会议记录"><Icon name="plus" size={14} /></button></div>
-          {showMeetingForm && <div className="track-meeting-form"><input className="text-input" value={meetingTitle} onChange={(event) => setMeetingTitle(event.target.value)} placeholder="会议主题" /><DatePicker value={meetingDate} onChange={setMeetingDate} label="会议日期" /><textarea className="text-area" rows={3} value={meetingContent} onChange={(event) => setMeetingContent(event.target.value)} placeholder="记录会议结论、决策和待办…" /><div className="track-meeting-form__actions"><button type="button" className="btn-ghost" onClick={() => setShowMeetingForm(false)}>取消</button><button type="button" className="btn-primary" onClick={() => addMeeting(r)} style={{ opacity: meetingTitle.trim() || meetingContent.trim() ? 1 : .45 }}>保存记录</button></div></div>}
-          {(r.meetings || []).length > 0 ? <div className="track-meeting-list">{(r.meetings || []).map((meeting) => <article className="track-meeting" key={meeting.id}><div className="track-meeting__top"><strong>{meeting.title}</strong>{meeting.date && <time>{meeting.date}</time>}</div><div>{meeting.content || '暂无会议内容'}</div></article>)}</div> : !showMeetingForm && <div className="track-detail__empty">暂无会议记录</div>}
         </div>
         </div>
         {previewAttachment && (

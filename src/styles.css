@@ -1042,6 +1042,24 @@ input {
   gap: 12px;
 }
 
+.requirement-form-meta-row {
+  align-items: flex-end;
+}
+
+.requirement-form-version {
+  flex: 0 0 120px;
+}
+
+.requirement-form-priority {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.requirement-form-priority .chip-row {
+  min-height: 38px;
+  align-items: center;
+}
+
 .text-area {
   width: 100%;
   border: 1px solid var(--border);
@@ -2725,13 +2743,23 @@ body {
 .prd-page__title {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 0 10px;
-  margin: 6px 0 5px;
+  min-width: 0;
+  margin: 3px 0 5px;
   color: var(--text);
   font-family: var(--font-serif);
   font-size: 21px;
   line-height: 1.3;
+}
+
+.prd-page__heading,
+.prd-page__meta-row {
+  min-width: 0;
+}
+
+.prd-page__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 
 .prd-page__version {
@@ -3220,6 +3248,149 @@ body {
 
 .table-add:hover {
   background: var(--primary-soft);
+}
+
+/* PRD diagram canvas and standalone grid component */
+.prd-diagram__shell,
+.prd-diagram__fullscreen-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px -16px var(--shadow-color);
+}
+.prd-diagram__toolbar,
+.prd-diagram__fullscreen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 10px 7px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 11px;
+}
+.prd-diagram__tools,
+.prd-diagram__fullscreen-head > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+.prd-diagram__tools button,
+.prd-diagram__fullscreen-head button:not(.icon-btn) {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  font-size: 11px;
+}
+.prd-diagram__tools button:hover,
+.prd-diagram__fullscreen-head button:not(.icon-btn):hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.prd-diagram__canvas {
+  min-height: 280px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface-sunken) 38%, var(--surface));
+  overflow: auto;
+}
+.prd-diagram__workspace { display: flex; min-height: 296px; }
+.prd-diagram__workspace--fullscreen { flex: 1; min-height: 0; }
+.prd-diagram__palette { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 48px; padding: 10px 6px; border-right: 1px solid var(--border); background: var(--surface-2); }
+.prd-diagram__palette span { margin-bottom: 3px; color: var(--text-3); font-size: 10px; writing-mode: vertical-rl; }
+.prd-diagram__palette button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 8px; color: var(--text-2); background: var(--surface); font-size: 16px; }
+.prd-diagram__palette button:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+.prd-diagram__workspace .prd-diagram__canvas { flex: 1; }
+.prd-diagram__zoom { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: 10px; }
+.prd-diagram__zoom button { width: 23px; height: 23px; padding: 0; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); background: var(--surface-2); }
+.prd-diagram__zoom button:hover { color: var(--primary); border-color: var(--primary); }
+.prd-diagram__canvas svg {
+  display: block;
+  width: 100%;
+  height: 300px;
+  color: var(--text-2);
+  touch-action: none;
+}
+.prd-diagram__node { color: var(--text-2); cursor: default; }
+.prd-diagram__node rect,
+.prd-diagram__node ellipse,
+.prd-diagram__node polygon {
+  fill: color-mix(in srgb, var(--primary-soft) 38%, var(--surface));
+  stroke: var(--primary);
+  stroke-width: 1.8;
+}
+.prd-diagram__node text { fill: var(--text); font-size: 13px; pointer-events: none; user-select: none; }
+.prd-diagram__node-remove { fill: var(--danger) !important; font-size: 18px !important; font-weight: 700; cursor: pointer; pointer-events: auto; }
+.prd-diagram__node-remove:hover { fill: var(--primary) !important; }
+.prd-diagram__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: color-mix(in srgb, var(--glass-bg) 20%, transparent);
+  backdrop-filter: blur(12px) saturate(118%);
+  -webkit-backdrop-filter: blur(12px) saturate(118%);
+}
+.prd-diagram__fullscreen-panel {
+  width: min(1400px, 100%);
+  height: min(900px, 100%);
+  display: flex;
+  flex-direction: column;
+}
+.prd-diagram__fullscreen-head { color: var(--text); font-size: 13px; font-weight: 650; }
+.prd-diagram__fullscreen-panel .prd-diagram__canvas { flex: 1; min-height: 0; padding: 14px; }
+.prd-diagram__fullscreen-panel .prd-diagram__canvas svg { height: 100%; min-height: 480px; }
+
+.prd-grid-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px -16px var(--shadow-color);
+}
+.prd-grid { width: 100%; min-width: 680px; border-collapse: separate; border-spacing: 0; color: var(--text-2); font-size: 12px; table-layout: fixed; }
+.prd-grid th,
+.prd-grid td { padding: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; }
+.prd-grid th { padding: 12px 14px; background: var(--surface-sunken); color: var(--text); font-size: 11px; font-weight: 650; }
+.prd-grid tr:last-child td { border-bottom: 0; }
+.prd-grid th:last-child,
+.prd-grid td:last-child { border-right: 0; }
+.prd-grid__col-index { width: 44px; }
+.prd-grid__col-module { width: 22%; }
+.prd-grid__col-change { width: 42%; }
+.prd-grid__col-note { width: 26%; }
+.prd-grid__col-operation { width: 54px; }
+.prd-grid tbody tr:hover td { background: color-mix(in srgb, var(--primary-soft) 38%, var(--surface)); }
+.prd-grid__index { padding: 14px 8px !important; color: var(--text-3); text-align: center !important; font-variant-numeric: tabular-nums; }
+.prd-grid input,
+.prd-grid textarea { display: block; width: 100%; min-height: 48px; box-sizing: border-box; padding: 12px 14px; border: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; line-height: 1.6; resize: vertical; }
+.prd-grid textarea { min-height: 72px; }
+.prd-grid input:hover,
+.prd-grid textarea:hover { background: color-mix(in srgb, var(--surface-sunken) 58%, transparent); }
+.prd-grid input:focus,
+.prd-grid textarea:focus { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--surface-2); }
+.prd-grid__cell-edit { display: flex; align-items: stretch; min-height: 48px; }
+.prd-grid__grip { width: 28px; flex: 0 0 28px; display: grid; place-items: center; padding: 0; border: 0; color: var(--text-3); background: transparent; cursor: grab; }
+.prd-grid__grip:hover { color: var(--primary); background: var(--primary-soft); }
+.prd-grid__display-cell { padding: 12px 14px !important; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.prd-grid__operation { width: 54px; text-align: center !important; }
+.prd-grid__delete { margin: 10px auto; color: var(--text-3); }
+.prd-grid__delete:hover { color: var(--danger); }
+.prd-grid__row--dragging td { background: var(--primary-soft) !important; opacity: .72; }
+.prd-grid__actions { display: flex; align-items: center; gap: 14px; margin-top: 9px; }
+
+@media (max-width: 760px) {
+  .prd-diagram__toolbar { align-items: flex-start; flex-wrap: wrap; }
+  .prd-diagram__tools { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
+  .prd-diagram__overlay { padding: 12px; }
+  .prd-diagram__fullscreen-panel { height: calc(100% - 24px); }
 }
 
 /* ============ 最终需求池视觉主题：中性灰白 + 单一皇家蓝 ============ */
@@ -4185,22 +4356,21 @@ body {
 
 .requirement-detail-page__identity h1 {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
   min-width: 0;
-  flex-wrap: nowrap;
   white-space: nowrap;
   color: var(--text);
   font-family: var(--font-serif);
   font-size: 19px;
   line-height: 1.35;
+  margin: 3px 0 0;
 }
 
-.requirement-detail-page__identity h1 > span:first-child {
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  flex: 0 0 auto;
+.requirement-detail-page__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 20px;
 }
 
 .requirement-detail-page__identity h1 .requirement-detail-page__version {
@@ -4212,6 +4382,7 @@ body {
 
 .requirement-detail-page__identity h1 .requirement-detail-page__name,
 .project-task-detail-page .requirement-detail-page__identity h1 .project-task-detail-page__name {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5881,6 +6052,9 @@ body {
 .requirement-edit-modal .modal__title { margin-bottom: 22px; }
 .requirement-edit-modal .modal__actions { margin-top: 24px; }
 @media (max-width: 760px) {
+  .requirement-form-meta-row { align-items: flex-start; }
+  .requirement-form-version { flex-basis: 100px; }
+  .requirement-form-priority .chip-row { gap: 4px; }
   .project-form-modal.project-task-create-modal { width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 56px); padding: 10px; }
   .project-form-modal.project-task-create-modal .project-task-create-modal__content { padding: 24px 20px 20px; }
   .project-form-modal.project-task-create-modal > .modal__actions { padding: 14px 20px 24px; }
