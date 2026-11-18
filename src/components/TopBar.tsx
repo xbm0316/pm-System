@@ -13,12 +13,13 @@ interface Props {
   reminderItems?: { id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string }[]
   onReminderClick?: (item: { id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string }) => void
   onSummaryClick?: () => void
+  hideReminder?: boolean
   hideTitle?: boolean
   sidebarCollapsed?: boolean
   onToggleSidebar?: () => void
 }
 
-export default function TopBar({ title, workspaceTabs, activeWorkspaceTab, onWorkspaceTabChange, onBackToHome, onLogout, searchQuery = '', onSearchChange, reminderCount = 0, reminderItems = [], onReminderClick, onSummaryClick, hideTitle = false, sidebarCollapsed, onToggleSidebar }: Props) {
+export default function TopBar({ title, workspaceTabs, activeWorkspaceTab, onWorkspaceTabChange, onBackToHome, onLogout, searchQuery = '', onSearchChange, reminderCount = 0, reminderItems = [], onReminderClick, onSummaryClick, hideReminder = false, hideTitle = false, sidebarCollapsed, onToggleSidebar }: Props) {
   const [searchOpen, setSearchOpen] = useState(Boolean(searchQuery))
   const [reminderOpen, setReminderOpen] = useState(false)
   const reminderWrapRef = useRef<HTMLDivElement>(null)
@@ -52,13 +53,13 @@ export default function TopBar({ title, workspaceTabs, activeWorkspaceTab, onWor
       </div>
 
       <div className="topbar__right">
-        <div className="topbar__tool-wrap" ref={reminderWrapRef}>
+        {!hideReminder && <div className="topbar__tool-wrap" ref={reminderWrapRef}>
           <button className={`icon-btn topbar__tool${reminderCount > 0 ? ' topbar__tool--has-reminders' : ''}`} onClick={() => { setReminderOpen((value) => !value); setSearchOpen(false) }} title="打开提醒" aria-label="打开提醒">
             <Icon name="bell" size={16} />
             {reminderCount > 0 && <span className="topbar__badge">{reminderCount > 9 ? '9+' : reminderCount}</span>}
           </button>
           {reminderOpen && <div className="topbar__popover"><strong>提醒</strong>{reminderItems.length ? <div className="topbar__reminder-list">{reminderItems.map((item) => <button type="button" key={item.id} className="topbar__reminder-item" onClick={() => { onReminderClick?.(item); setReminderOpen(false) }}><span>{item.kind === 'task' ? '任务' : item.kind === 'issue' ? '问题' : '需求'} · {item.title}</span><small>截止 {item.dueDate}</small></button>)}</div> : <span>暂无 24 小时内到期的内容</span>}</div>}
-        </div>
+        </div>}
         {onSearchChange && <button className={`icon-btn topbar__tool${searchOpen || searchQuery ? ' topbar__tool--active' : ''}`} onClick={() => { setSearchOpen((value) => !value); setReminderOpen(false) }} title="搜索" aria-label="打开搜索"><Icon name="search" size={16} /></button>}
         {onSummaryClick && <button className="icon-btn topbar__tool" onClick={() => { setSearchOpen(false); setReminderOpen(false); onSummaryClick() }} title="查看总结" aria-label="打开总结"><Icon name="summary" size={16} /></button>}
       </div>

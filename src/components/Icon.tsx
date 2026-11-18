@@ -9,6 +9,7 @@ interface Props {
 
 // Lucide-inspired local icon set. Existing <Icon name="..." /> calls stay unchanged.
 const paths: Record<string, ReactNode> = {
+  image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3 3 2-2 6 6" /></>,
   doc: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
   trend: <><path d="m3 17 6-6 4 4 8-8" /><path d="M15 7h6v6" /></>,
   chat: <path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9.6 9.6 0 0 1-4-.9L3 21l1.9-4A8.3 8.3 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" />,
@@ -38,6 +39,7 @@ const paths: Record<string, ReactNode> = {
   trash: <><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="m9 7 1-3h4l1 3M6 7l1 14h10l1-14" /></>,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   eye: <><path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z" /><circle cx="12" cy="12" r="2.5" /></>,
+  folder: <><path d="M3 7.5a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /><path d="M3 10h18" /></>,
   edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" /></>,
   check: <path d="m5 12 4 4L19 6" />,
   refresh: <><path d="M20 11a8 8 0 0 0-14.7-4L3 10" /><path d="M3 5v5h5M4 13a8 8 0 0 0 14.7 4L21 14" /><path d="M21 19v-5h-5" /></>,

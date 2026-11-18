@@ -7,7 +7,7 @@ import ProjectManagerBoard from '../components/ProjectManagerBoard'
 import OperationsWorkspace from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
 import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
-import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, deleteRequirementRow } from '../lib/api'
+import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, updateCompetitor, deleteCompetitorRow, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
 
 function previewRequirements(spaceId: string): Requirement[] {
@@ -45,7 +45,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const [summaryTasks, setSummaryTasks] = useState<ProjectTask[]>([])
   const [summaryIssues, setSummaryIssues] = useState<ProjectIssue[]>([])
   const [summaryRecords, setSummaryRecords] = useState<ProjectSummary[]>([])
-  const [activeMenu, setActiveMenu] = useState(isOperationsManager ? 'prod' : isProductManager ? 'req' : 'proj')
+  const [activeMenu, setActiveMenu] = useState(isOperationsManager ? 'ops-knowledge' : isProductManager ? 'req' : 'proj')
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [addSignal, setAddSignal] = useState<Record<string, number>>({})
   const [requirements, setRequirements] = useState<Requirement[]>([])
@@ -53,7 +53,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
 
   useEffect(() => {
     setActiveWorkspaceTab('workbench')
-    setActiveMenu(isOperationsManager ? 'prod' : isProductManager ? 'req' : 'proj')
+    setActiveMenu(isOperationsManager ? 'ops-knowledge' : isProductManager ? 'req' : 'proj')
     setDetailTarget(null)
     setOpenTaskId(null)
     setSearchQuery('')
@@ -68,9 +68,13 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
         ...requirement,
         attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
       })))
+      const competitorsWithLocalFiles = await Promise.all(cs.map(async (competitor) => ({
+        ...competitor,
+        image: (await listLocalFiles('competitor', competitor.id))[0] as Competitor['image'],
+      })))
       if (cancelled) return
       setRequirements(requirementsWithLocalFiles)
-      setCompetitors(cs)
+      setCompetitors(competitorsWithLocalFiles)
     })()
     return () => { cancelled = true }
   }, [ownerPhone, space.id, isOperationsManager, isProductManager])
@@ -124,6 +128,17 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     void insertCompetitor(item)
   }
 
+  function updateCompetitorFields(id: string, patch: Partial<Competitor>) {
+    setCompetitors((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item))
+    void updateCompetitor(id, { name: patch.name, url: patch.url, description: patch.description })
+  }
+
+  function deleteCompetitor(id: string) {
+    setCompetitors((prev) => prev.filter((item) => item.id !== id))
+    void deleteCompetitorRow(id)
+    void deleteLocalFilesForEntity('competitor', id)
+  }
+
   function deleteRequirement(reqId: string) {
     setRequirements((prev) => prev.filter((item) => item.id !== reqId))
     setDetailTarget((current) => current === reqId ? null : current)
@@ -148,7 +163,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
       return <RequirementDetailPage requirement={target} requirements={requirements} competitors={competitors} onStatusChange={updateReqStatus} onUpdateAttachments={updateRequirementFiles} onUpdateRequirement={updateRequirementFields} onClose={() => setDetailTarget(null)} />
     }
     if (activeMenu === 'req') return <ReqPool spaceId={space.id} requirements={requirements} competitors={competitors} activeReqId={detailTarget} onAdd={addRequirement} onOpenTrack={setDetailTarget} onDelete={deleteRequirement} openSignal={addSignal.req || 0} searchQuery={searchQuery} />
-    if (activeMenu === 'comp') return <CompAnalysis spaceId={space.id} competitors={competitors} onAdd={addCompetitor} openSignal={addSignal.comp || 0} searchQuery={searchQuery} />
+    if (activeMenu === 'comp') return <CompAnalysis spaceId={space.id} competitors={competitors} onAdd={addCompetitor} onUpdate={updateCompetitorFields} onDelete={deleteCompetitor} openSignal={addSignal.comp || 0} searchQuery={searchQuery} />
     return <div className="empty" style={{ padding: '36px 12px' }}><div style={{ fontSize: 12.5 }}>该模块暂未开放</div></div>
   }
 
@@ -171,9 +186,9 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   }
 
   return <>
-    <TopBar title={space.name} workspaceTabs={workspaceTabs} activeWorkspaceTab={activeTopTab} onWorkspaceTabChange={changeWorkspaceTab} onBackToHome={onBackToHome} hideTitle searchQuery={searchQuery} onSearchChange={setSearchQuery} reminderCount={isProductManager ? reminderItems.length : reminderCount} reminderItems={isProductManager ? reminderItems : reminderItems} onReminderClick={(item) => { if (item.kind === 'requirement' && item.reqId) { setActiveMenu('req'); setDetailTarget(item.reqId) } else if (item.taskId) { setActiveWorkspaceTab('workbench'); setOpenTaskId(item.taskId); setWorkspaceRevision((value) => value + 1) } }} onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary} />
+    <TopBar title={space.name} workspaceTabs={workspaceTabs} activeWorkspaceTab={activeTopTab} onWorkspaceTabChange={changeWorkspaceTab} onBackToHome={onBackToHome} hideTitle searchQuery={searchQuery} onSearchChange={setSearchQuery} reminderCount={isProductManager ? reminderItems.length : reminderCount} reminderItems={isProductManager ? reminderItems : reminderItems} hideReminder={isOperationsManager} onReminderClick={(item) => { if (item.kind === 'requirement' && item.reqId) { setActiveMenu('req'); setDetailTarget(item.reqId) } else if (item.taskId) { setActiveWorkspaceTab('workbench'); setOpenTaskId(item.taskId); setWorkspaceRevision((value) => value + 1) } }} onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary} />
     <div className={`main${isProductManager ? ' main--product' : ' main--project'}`}>
-      <section className={`content${isProductManager ? ' content--product' : ' content--project'}`}>
+      <section className={`content${isProductManager ? ' content--product' : isOperationsManager ? ' content--operations' : ' content--project'}`}>
         {isOperationsManager ? <OperationsWorkspace key={space.id} ownerPhone={ownerPhone} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : view === 'retro' || view === 'knowledge' || view === 'meeting' ? <ProjectManagerBoard key={space.id} ownerPhone={ownerPhone} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} onOpenTask={(taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) }} onCloseTask={() => setOpenTaskId(null)} view={view} /> : <ProjectManagerBoard key={space.id} ownerPhone={ownerPhone} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} openTaskId={openTaskId} onCloseTask={() => setOpenTaskId(null)} view="board" />}
       </section>
     </div>

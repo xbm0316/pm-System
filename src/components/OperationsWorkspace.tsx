@@ -1,89 +1,210 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import Icon from './Icon'
 import { MENUS, uid } from '../lib/store'
+import { deleteLocalFile, getLocalFile, localFileUrl, uploadLocalFile, type LocalAttachment } from '../lib/localFiles'
+import FileAttachmentList from './FileAttachmentList'
 
-interface OperationsWorkspaceProps {
-  spaceId: string
-  ownerPhone: string
-  activeMenu: string
-  searchQuery?: string
-}
+interface OperationsWorkspaceProps { spaceId: string; ownerPhone: string; activeMenu: string; searchQuery?: string }
+type LearningStatus = '未开始' | '学习中' | '已完成' | '待复习'
+type ProductConclusion = '继续研究' | '进入测试' | '准备上架' | '作为备选' | '暂停'
+type CampaignStatus = '准备中' | '测试中' | '放量中' | '暂停'
+type ReviewDecision = '继续' | '调整' | '暂停'
+type ResourceType = '账号' | '教程'
+interface TutorialType { id: string; title: string; description: string; color: string }
+interface TutorialCard { id: string; typeId: string; title: string; description: string; url: string; source: string; resourceType?: ResourceType; account?: string; password?: string; goal: string; steps: string; outputs: string; status: LearningStatus; notes: string; attachments: string[]; nextAction: string; reviewDate: string; updatedAt: number }
+interface OpsProduct { id: string; name: string; description?: string; sku?: string; inventory?: number; image: string; images?: string[]; imageFileIds?: string[]; imagePaths?: string[]; supplier: string; cost: number; price: number; shipping: number; paymentFee: number; adCost: number; refundReserve: number; evidence: string; competition: string; fulfillment: string; materials: string; conclusion: ProductConclusion; attachments: string[]; createdAt: number }
+interface OpsCampaign { id: string; name: string; platform: string; productId: string; objective: string; audience: string; creative: string; landingPage: string; dailyBudget: number; totalBudget: number; spend: number; orders: number; revenue: number; status: CampaignStatus; notes: string; createdAt: number }
+interface OpsReview { id: string; title: string; date: string; scope: string; completed: string; problems: string; insight: string; decision: ReviewDecision; nextAction: string; attachments: LocalAttachment[]; createdAt: number }
+interface OperationsState { tutorialCards: TutorialCard[]; products: OpsProduct[]; campaigns: OpsCampaign[]; reviews: OpsReview[]; knowledgeTypes?: TutorialType[] }
 
-interface OperationsRecord {
-  id: string
-  menuKey: string
-  title: string
-  content: string
-  createdAt: number
-}
-
-const STORAGE_PREFIX = 'jawcat.operations.v1.'
-
-function readRecords(ownerPhone: string, spaceId: string): OperationsRecord[] {
-  try {
-    const scopedKey = `${STORAGE_PREFIX}${ownerPhone}.${spaceId}`
-    const legacyKey = `${STORAGE_PREFIX}${spaceId}`
-    const raw = localStorage.getItem(scopedKey) || (ownerPhone === '13610392041' ? localStorage.getItem(legacyKey) : null)
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+const STORAGE_PREFIX = 'jawcat.operations.v4.'
+const TUTORIAL_BASE = 'https://ecomwith.com/zh/tutorials/basics/'
+const TOOLS_BASE = 'https://ecomwith.com/zh/tools/'
+const tutorialTypes: TutorialType[] = [
+  { id: 'route', title: '独立站起步 · 18 节课程', description: '严格按照 Ecomwith 的学习顺序，从模式、选品、主体一路完成到上线。', color: '#0951C3' },
+  { id: 'assets', title: '课程执行资产', description: '把课程中的检查清单、指标复盘和下一步行动沉淀下来。', color: '#0e9b83' },
+  { id: 'tools', title: 'Ecomwith 工具', description: '直接打开教程站点提供的研究、ROAS 和 UTM 工具。', color: '#e39a26' },
+  { id: 'products', title: '我的选品资料', description: '保存选品证据、报价、竞品资料和利润判断。', color: '#df6d5c' },
+  { id: 'traffic', title: '投流扩展', description: '记录 Meta、Google、TikTok、GA4 和 SEO 的外部学习资料与实操。', color: '#bd5bb4' },
+]
+interface TutorialSeed { typeId: string; title: string; description: string; url: string; source: string; goal: string; steps: string; outputs: string }
+const tutorialSeeds: TutorialSeed[] = [
+  ['跨境电商与独立站：从中国供应链，认识一门面向海外的生意', '从一位顾客买杯子的过程，弄清跨境电商、品牌独立站和平台的区别。', 'cross-border-ecommerce', '明确目标市场、客户和经营方式。', '读完后写下目标市场、目标客户和购买理由。', '目标市场\\n目标客户\\n购买理由'],
+  ['Shopify 独立站入门：弄清你在经营什么', '把独立站、商品、主市场、收款、履约和数据拆成一张经营地图。', 'store-basics', '知道经营链路和暂停判断。', '画出自己的经营链路，并写下第一个可复查判断。', '经营链路\\n首批商品计划'],
+  ['30 天启动独立站：起步路线和顺序', '用 30 天路线排好市场、SKU、主体、现金、域名、收款、物流和数据。', 'getting-started', '形成 30 天启动计划。', '列出任务、预算、暂停线和上线检查点。', '30 天计划\\n启动预算\\n暂停线'],
+  ['海外公司怎么选：如何收款', '判断主体是否能支撑收款、银行、KYC、网站身份和维护成本。', 'overseas-company-registration', '确定主体方案或暂不注册的条件。', '比较 UK、香港、美国主体并保存判断。', '主体方案\\n注册资料\\n维护成本'],
+  ['独立站营业执照和主体', '核对采购、合同、开票、经营范围、收款主体和网站身份。', 'domestic-business-license', '确认国内主体的使用边界。', '记录执照、经营范围和资料留痕位置。', '执照信息\\n经营范围\\n资料留痕'],
+  ['独立站启动资金：开店前要准备多少现金', '从 90 天现金视角覆盖广告、库存订金、退款和 payout 延迟。', 'personal-finance-preparation', '完成现金流和启动预算判断。', '记录固定成本、测试预算和现金缓冲。', '可用现金\\n测试预算\\n90 天现金计划'],
+  ['跨境业务手机号：2FA 和账号恢复', '区分后台安全号、客服展示号和临时验证号。', 'overseas-phone-setup', '让核心账号可恢复、可交接。', '为核心账号设置 2FA 并记录恢复方式。', '安全手机号\\n恢复方式\\n交接规则'],
+  ['独立站选品：需求、利润和履约验证', '用需求、竞争、利润、履约和内容表达五个证据判断商品。', 'product-research', '形成有证据的选品结论。', '完成一个商品的五类证据和利润计算。', '需求证据\\n竞品证据\\n供应商报价'],
+  ['独立站域名和企业邮箱：DNS 与邮件认证', '检查 DNS、Shopify 连接和邮件认证，避免邮件进垃圾箱。', 'domain-and-email', '建立品牌入口和可靠邮件身份。', '记录域名、DNS、企业邮箱和认证状态。', '域名\\nDNS\\n企业邮箱'],
+  ['Shopify 后台设置：订单链路和测试订单', '按真实订单顺序确认收钱、发货、追踪和通知链路。', 'shopify-setup', '完成一笔受控测试订单。', '验证付款、发货、邮件和订单追踪。', '测试订单\\n后台配置\\n通知证据'],
+  ['Shopify 店铺结构：从导航到结账路径', '检查导航菜单、集合页、商品页、政策入口、购物车和移动端路径。', 'shopify-store-setup', '让用户能顺畅找到商品并结账。', '完成首页到结账的移动端路径检查。', '导航结构\\n移动端 QA\\n结账路径'],
+  ['独立站收款准备：支付、退款与拒付证据', '验证 Shopify Payments、PayPal 和第三方支付的完整路径。', 'payment-gateway-setup', '确认收款、退款和拒付证据。', '完成成功付款、失败付款、退款和净到账测试。', '账户信息\\n费率\\n退款测试'],
+  ['Shopify 商品上架：商品页、变体和移动端加购', '组织图片、规格、变体、FAQ、配送承诺和移动端加购体验。', 'product-listing', '完成一个可购买的商品页面。', '记录商品内容、变体规则和移动端检查结果。', '商品信息\\n变体规则\\nFAQ'],
+  ['独立站政策页面：隐私、退款与服务条款', '让隐私、退款、服务条款和配送承诺与实际运营一致。', 'policy-pages', '建立可信、可访问的政策页面。', '保存页面链接和与实际服务的差异说明。', '政策链接\\n差异说明'],
+  ['独立站物流与履约：运费、时效和订单追踪', '核对 Shopify 运费、配送时效、订单追踪和异常处理。', 'shipping-fulfillment', '形成真实可执行的履约承诺。', '记录物流方式、成本、时效和异常方案。', '运费规则\\n时效\\n异常方案'],
+  ['独立站上线检查：订单、结账和数据验收', '用测试订单、结账、移动端 QA、purchase 事件和政策客服证据完成验收。', 'launch-qa', '形成上线前检查结论。', '完成上线 QA 并记录阻塞项。', '测试结果\\n数据事件\\n上线结论'],
+  ['独立站客服与售后：SLA、退款和复购触达', '建立客服 SLA、异常分流、短回复模板和购后触达流程。', 'customer-care', '让首批订单有清晰的售后路径。', '准备客服入口、退款流程和回复模板。', '客服入口\\nSLA\\n回复模板'],
+  ['Shopify 系统集成：一笔订单怎么跑通证据链', '核对订单邮件、付款、GA4 purchase、履约和客服查询。', 'system-integration', '让经营和数据链路可复查。', '用一笔真实或受控订单完成证据链核对。', '订单证据\\nGA4 事件\\n履约证据'],
+].map(([title, description, slug, goal, steps, outputs]) => ({ typeId: 'route', title, description, url: `${TUTORIAL_BASE}${slug}`, source: 'Ecomwith', goal, steps, outputs }))
+tutorialSeeds.push(
+  { typeId: 'assets', title: '独立站上线执行包', description: '把核心检查清单、指标复盘表和下一步行动表集中管理。', url: `${TUTORIAL_BASE}`, source: 'Ecomwith', goal: '每节课留下可复查资产。', steps: '核心检查清单\\n指标复盘表\\n下一步行动表', outputs: '检查清单\\n指标记录\\n行动表' },
+  { typeId: 'tools', title: 'Store Inspector 店铺研究', description: '用于研究店铺和竞品结构。', url: `${TOOLS_BASE}store-inspector`, source: 'Ecomwith 工具', goal: '保存研究对象和观察结论。', steps: '输入店铺\\n记录页面结构\\n保存观察', outputs: '店铺研究记录' },
+  { typeId: 'tools', title: 'ROAS 计算器', description: '计算广告投入与收入的关系。', url: `${TOOLS_BASE}roas`, source: 'Ecomwith 工具', goal: '建立投流判断基线。', steps: '填写花费\\n填写收入\\n记录 ROAS', outputs: 'ROAS 结果' },
+  { typeId: 'tools', title: '保本 ROAS', description: '计算覆盖商品成本和费用所需的最低 ROAS。', url: `${TOOLS_BASE}break-even-roas`, source: 'Ecomwith 工具', goal: '在投流前明确保本线。', steps: '填写成本\\n填写毛利\\n记录保本 ROAS', outputs: '保本 ROAS' },
+  { typeId: 'tools', title: 'UTM 生成器', description: '为广告、内容和渠道生成可追踪链接。', url: `${TOOLS_BASE}utm-builder`, source: 'Ecomwith 工具', goal: '让来源数据可以回查。', steps: '填写来源\\n填写媒介\\n生成链接', outputs: 'UTM 链接' },
+  { typeId: 'traffic', title: 'Meta / Google / TikTok 投流资料', description: '这里保存外部投流教程、广告账户资料、素材和数据追踪记录。', url: '', source: '我的外部资料', goal: '把投流学习与实际广告计划关联起来。', steps: '添加外部链接\\n记录广告账户\\n记录素材与受众', outputs: '投流资料\\n广告计划\\n数据复盘' },
+)
+function initialCards(): TutorialCard[] { const now = Date.now(); return tutorialSeeds.map((definition, index) => ({ id: `tutorial-${index + 1}`, ...definition, resourceType: '教程', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', updatedAt: now })) }
+function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
+function readState(ownerPhone: string, spaceId: string): OperationsState { try { const raw = localStorage.getItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`); if (!raw) return initialState(); const parsed = JSON.parse(raw) as Partial<OperationsState>; return { tutorialCards: Array.isArray(parsed.tutorialCards) && parsed.tutorialCards.length ? parsed.tutorialCards : initialCards(), products: Array.isArray(parsed.products) ? parsed.products.map((item) => ({ ...item, images: Array.isArray(item.images) ? item.images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) : (item.image ? [item.image] : []) })) : [], campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [], reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({ ...item, attachments: Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is LocalAttachment => Boolean(entry && typeof entry === 'object' && (entry as LocalAttachment).id)).map((entry) => ({ ...entry, url: entry.fileId ? localFileUrl(entry.fileId) : entry.url })) : [] })) : [], knowledgeTypes: Array.isArray(parsed.knowledgeTypes) && parsed.knowledgeTypes.length ? parsed.knowledgeTypes : tutorialTypes } } catch { return initialState() } }
+function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
+function OpsModal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) { return <div className="overlay" onClick={onClose}><div className={`modal operations-modal${wide ? ' operations-modal--wide' : ''}`} onClick={(event) => event.stopPropagation()}><div className="operations-modal__head"><div className="modal__title">{title}</div><button className="icon-btn" type="button" onClick={onClose} aria-label="关闭"><Icon name="close" size={16} /></button></div>{children}</div></div> }
+function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="operations-field"><span className="field-label">{label}{required && <span className="field-required"> *</span>}</span>{children}</label> }
+function FileNames({ spaceId, entityId, files, onChange }: { spaceId: string; entityId: string; files: LocalAttachment[]; onChange: (files: LocalAttachment[]) => void }) { const ref = useRef<HTMLInputElement>(null); const [uploading, setUploading] = useState(false); async function addFiles(selected: FileList | null) { if (!selected) return; setUploading(true); const results = await Promise.allSettled(Array.from(selected).slice(0, 20 - files.length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'ops-review', entityId, pathSegments: ['独立站运营', '复盘', entityId] }))); const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []); if (uploaded.length) onChange([...files, ...uploaded]); setUploading(false) } return <div className="operations-files"><input ref={ref} type="file" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = '' }} /><button type="button" className="btn-ghost operations-file-btn" onClick={() => ref.current?.click()} disabled={uploading}><Icon name="plus" size={13} /> {uploading ? '上传中…' : '添加附件'}</button>{files.length > 0 && <FileAttachmentList files={files} onDelete={(file) => { void deleteLocalFile(file.fileId || file.id); onChange(files.filter((item) => item.id !== file.id)) }} compact />}</div> }
+function ProductImagePicker({ spaceId, productId, productName, images, fileIds, imagePaths, onChange }: { spaceId: string; productId: string; productName: string; images: string[]; fileIds: string[]; imagePaths: string[]; onChange: (images: string[], fileIds: string[], imagePaths: string[]) => void }) {
+  const ref = useRef<HTMLInputElement>(null)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [resolvedPaths, setResolvedPaths] = useState<string[]>(imagePaths)
+  useEffect(() => { let cancelled = false; void Promise.all(fileIds.map(async (id, index) => imagePaths[index] || (await getLocalFile(id).catch(() => null))?.relativePath || '')).then((paths) => { if (!cancelled) setResolvedPaths(paths) }); return () => { cancelled = true } }, [fileIds, imagePaths])
+  async function addFiles(files: FileList | null) {
+    if (!files) return
+    const results = await Promise.allSettled(Array.from(files).filter((file) => file.type.startsWith('image/')).map((file) => uploadLocalFile(file, { spaceId, entityType: 'product', entityId: productId, pathSegments: ['选品', productName || productId, '商品图片'] })))
+    const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+    if (uploaded.length) onChange([...images, ...uploaded.map((item) => item.url)], [...fileIds, ...uploaded.map((item) => item.fileId)], [...resolvedPaths, ...uploaded.map((item) => item.relativePath || '')])
   }
-}
-
-export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
-  const menus = MENUS['独立站电商运营']
-  const [records, setRecords] = useState<OperationsRecord[]>(() => readRecords(ownerPhone, spaceId))
-  const [showCreate, setShowCreate] = useState(false)
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(records))
-  }, [ownerPhone, records, spaceId])
-
-  const activeMenuDef = menus.find((menu) => menu.key === activeMenu) || menus[0]
-  const visibleRecords = useMemo(() => records
-    .filter((record) => record.menuKey === activeMenuDef.key)
-    .filter((record) => !searchQuery.trim() || `${record.title} ${record.content}`.toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase()))
-    .sort((a, b) => b.createdAt - a.createdAt), [activeMenuDef.key, records, searchQuery])
-
-  function createRecord() {
-    const cleanTitle = title.trim()
-    if (!cleanTitle) return
-    setRecords((current) => [{ id: uid(), menuKey: activeMenuDef.key, title: cleanTitle, content: content.trim(), createdAt: Date.now() }, ...current])
-    setTitle('')
-    setContent('')
-    setShowCreate(false)
+  async function removeImage(index: number) {
+    const fileId = fileIds[index]
+    if (fileId) await deleteLocalFile(fileId)
+    onChange(images.filter((_, current) => current !== index), fileIds.filter((_, current) => current !== index), resolvedPaths.filter((_, current) => current !== index))
   }
-
-  function removeRecord(id: string) {
-    setRecords((current) => current.filter((record) => record.id !== id))
-  }
-
-  return <div className="operations-workspace">
-    <div className="operations-workspace__head">
-      <div>
-        <div className="operations-workspace__eyebrow">独立站运营</div>
-        <h1>{activeMenuDef.label}</h1>
-      </div>
-      <button type="button" className="btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={14} /> 新增记录</button>
+  useEffect(() => { if (activeIndex >= images.length) setActiveIndex(Math.max(images.length - 1, 0)) }, [activeIndex, images.length])
+  return <div className="operations-image-picker">
+    <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = '' }} />
+    <div className="operations-image-picker__preview">
+      {images[activeIndex] ? <img src={images[activeIndex]} alt={`商品主图 ${activeIndex + 1}`} /> : <div className="operations-image-picker__empty"><Icon name="image" size={30} /><strong>上传商品主图</strong><span>建议使用清晰的商品图片</span></div>}
+      {images.length > 1 && <><button className="operations-image-picker__nav operations-image-picker__nav--prev" type="button" onClick={() => setActiveIndex((activeIndex - 1 + images.length) % images.length)} aria-label="上一张"><Icon name="chevronLeft" size={16} /></button><button className="operations-image-picker__nav operations-image-picker__nav--next" type="button" onClick={() => setActiveIndex((activeIndex + 1) % images.length)} aria-label="下一张"><Icon name="chevronRight" size={16} /></button></>}
     </div>
-    <div className="operations-workspace__grid">
-      {visibleRecords.length === 0 ? <div className="operations-workspace__empty">暂无{activeMenuDef.label}记录</div> : visibleRecords.map((record) => <article className="operations-record-card" key={record.id}>
-        <div className="operations-record-card__top"><span>{activeMenuDef.label}</span><button type="button" onClick={() => removeRecord(record.id)} title="删除记录" aria-label={`删除记录 ${record.title}`}><Icon name="trash" size={13} /></button></div>
-        <h2>{record.title}</h2>
-        <p>{record.content || '暂无补充说明'}</p>
-      </article>)}
-    </div>
-    {showCreate && <div className="overlay" onClick={() => setShowCreate(false)}><form className="modal modal--wide operations-create-modal" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); createRecord() }}>
-      <div className="modal__title">新增{activeMenuDef.label}</div>
-      <div className="field-label">记录标题 <span className="field-required">*</span></div>
-      <input className="text-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={`输入${activeMenuDef.label}标题`} autoFocus required />
-      <div className="field-label collection-field-gap">记录内容</div>
-      <textarea className="text-area" rows={7} value={content} onChange={(event) => setContent(event.target.value)} placeholder="记录关键信息、执行结果和备注" />
-      <div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setShowCreate(false)}>取消</button><button type="submit" className="btn-primary" disabled={!title.trim()} style={{ opacity: title.trim() ? 1 : .45 }}>创建记录</button></div>
-    </form></div>}
+    <div className="operations-image-picker__footer"><div className="operations-image-picker__list">
+      {images.map((image, index) => <div className={`operations-image-picker__item${index === activeIndex ? ' is-active' : ''}`} key={`${image.slice(0, 24)}-${index}`}><button className="operations-image-picker__select" type="button" onClick={() => setActiveIndex(index)} aria-label={`查看商品图 ${index + 1}`}><img src={image} alt={`商品图 ${index + 1}`} /></button><button className="operations-image-picker__remove" type="button" onClick={() => void removeImage(index)} aria-label={`删除商品图 ${index + 1}`}><Icon name="close" size={11} /></button><small className="operations-image-picker__path">{resolvedPaths[index] || '路径暂不可用'}</small></div>)}
+      <button type="button" className="operations-image-picker__button" onClick={() => ref.current?.click()}><Icon name="plus" size={16} /><span>添加图片</span></button>
+    </div><span className="operations-image-picker__hint">首张图片将作为商品主图，支持一次选择多张图片</span><FileAttachmentList files={images.map((image, index) => ({ id: fileIds[index] || `${productId}-${index}`, fileId: fileIds[index], name: `商品图片 ${index + 1}`, url: image, kind: 'image' as const, relativePath: resolvedPaths[index] }))} compact /></div>
   </div>
 }
 
+export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
+  const [state, setState] = useState<OperationsState>(() => readState(ownerPhone, spaceId))
+  const [knowledgeDraft, setKnowledgeDraft] = useState<TutorialCard | null>(null)
+  const [productDraft, setProductDraft] = useState<OpsProduct | null>(null)
+  const [campaignDraft, setCampaignDraft] = useState<OpsCampaign | null>(null)
+  const [reviewDraft, setReviewDraft] = useState<OpsReview | null>(null)
+  const [knowledgeTypeId, setKnowledgeTypeId] = useState('route')
+  const [knowledgeTypeDraft, setKnowledgeTypeDraft] = useState<TutorialType | null>(null)
+  const [visibleAccountPasswordId, setVisibleAccountPasswordId] = useState<string | null>(null)
+  const [knowledgePasswordVisible, setKnowledgePasswordVisible] = useState(false)
+  const [productImageIndexes, setProductImageIndexes] = useState<Record<string, number>>({})
+  const [productTab, setProductTab] = useState<'basic' | 'pricing'>('basic')
+  const menus = MENUS['独立站电商运营']
+  const query = searchQuery.trim().toLocaleLowerCase()
+  const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
+  useEffect(() => { setState(readState(ownerPhone, spaceId)) }, [ownerPhone, spaceId])
+  useEffect(() => { localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(state)) }, [ownerPhone, spaceId, state])
+  const cards = useMemo(() => state.tutorialCards.filter((item) => !query || `${item.title} ${item.description} ${item.notes} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.tutorialCards])
+  const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier} ${item.conclusion}`.toLocaleLowerCase().includes(query)), [query, state.products])
+  const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
+  function newKnowledge(typeId = knowledgeTypeId) { setKnowledgePasswordVisible(false); setKnowledgeDraft({ id: uid(), typeId, title: '', description: '', url: '', source: '', resourceType: '教程', account: '', password: '', goal: '', steps: '', outputs: '', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', updatedAt: Date.now() }) }
+  function newKnowledgeType() { setKnowledgeTypeDraft({ id: uid(), title: '', description: '', color: ['#0951C3', '#0e9b83', '#e39a26', '#df6d5c', '#bd5bb4'][knowledgeTypes.length % 5] }) }
+  function saveKnowledgeType(event: FormEvent) { event.preventDefault(); const draft = knowledgeTypeDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, knowledgeTypes: [...(current.knowledgeTypes || tutorialTypes).filter((item) => item.id !== draft.id), { ...draft, title: draft.title.trim() }] })); setKnowledgeTypeId(draft.id); setKnowledgeTypeDraft(null) }
+  function deleteKnowledgeType(typeId: string) { if (knowledgeTypes.length <= 1) return; const nextTypes = knowledgeTypes.filter((item) => item.id !== typeId); setState((current) => ({ ...current, knowledgeTypes: nextTypes, tutorialCards: current.tutorialCards.filter((item) => item.typeId !== typeId) })); if (knowledgeTypeId === typeId) setKnowledgeTypeId(nextTypes[0].id) }
+  function saveKnowledge(event: FormEvent) { event.preventDefault(); const draft = knowledgeDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, tutorialCards: [...current.tutorialCards.filter((item) => item.id !== draft.id), { ...draft, title: draft.title.trim(), url: draft.url.trim(), account: draft.resourceType === '账号' ? draft.account?.trim() : '', password: draft.resourceType === '账号' ? draft.password : '', updatedAt: Date.now() }] })); setKnowledgeDraft(null) }
+  function newProduct() { setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', inventory: 0, image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', conclusion: '继续研究', attachments: [], createdAt: Date.now() }) }
+  function saveProduct(event: FormEvent) { event.preventDefault(); const draft = productDraft; if (!draft || !draft.name.trim()) return; setState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), draft] })); setProductDraft(null) }
+  function newCampaign() { setCampaignDraft({ id: uid(), name: '', platform: 'Meta', productId: '', objective: '转化', audience: '', creative: '', landingPage: '', dailyBudget: 0, totalBudget: 0, spend: 0, orders: 0, revenue: 0, status: '准备中', notes: '', createdAt: Date.now() }) }
+  function saveCampaign(event: FormEvent) { event.preventDefault(); const draft = campaignDraft; if (!draft || !draft.name.trim()) return; setState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] })); setCampaignDraft(null) }
+  function newReview() { setReviewDraft({ id: uid(), title: '', date: new Date().toISOString().slice(0, 10), scope: '教程学习', completed: '', problems: '', insight: '', decision: '继续', nextAction: '', attachments: [], createdAt: Date.now() }) }
+  function saveReview(event: FormEvent) { event.preventDefault(); const draft = reviewDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, reviews: [...current.reviews.filter((item) => item.id !== draft.id), draft] })); setReviewDraft(null) }
+  const cardType = (typeId: string) => knowledgeTypes.find((item) => item.id === typeId) || knowledgeTypes[0]
+  function renderKnowledge() {
+    return <>
+      <div className="req-pool-toolbar operations-knowledge-toolbar--pool"><div /><button className="btn-primary" type="button" onClick={newKnowledgeType}><Icon name="plus" size={14} /> 新增类型</button></div>
+      <div className="status-groups-shell req-pool-shell operations-knowledge-shell"><div className="status-groups operations-knowledge-groups">
+        {knowledgeTypes.map((type) => { const typeCards = cards.filter((item) => item.typeId === type.id); return <section className="status-group operations-knowledge-group" key={type.id} style={{ '--status-accent': type.color, '--status-soft': `${type.color}18` } as React.CSSProperties}>
+          <div className="status-group__head operations-knowledge-group__head"><div className="operations-knowledge-group__title"><span className="status-group__name">{type.title}</span><span className="status-group__count">{typeCards.length}</span></div><div className="operations-knowledge-group__actions"><button className="icon-btn" type="button" title="新增资料" aria-label={`在${type.title}中新增资料`} onClick={() => newKnowledge(type.id)}><Icon name="plus" size={13} /></button><button className="icon-btn" type="button" title="编辑类型" aria-label={`编辑${type.title}`} onClick={() => setKnowledgeTypeDraft({ ...type })}><Icon name="edit" size={13} /></button><button className="icon-btn" type="button" title="删除类型" aria-label={`删除${type.title}`} onClick={() => deleteKnowledgeType(type.id)} disabled={knowledgeTypes.length <= 1}><Icon name="trash" size={13} /></button></div></div>
+          <div className="status-group__body-shell"><div className="status-group__body operations-knowledge-group__body">
+            {typeCards.length ? typeCards.map((item) => <div className="req-card-wrap operations-knowledge-card-wrap" key={item.id}><article className="req-card operations-knowledge-req-card" onClick={() => setKnowledgeDraft({ ...item })} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setKnowledgeDraft({ ...item }) } }}><div className="req-card__top"><span className="req-card__ver">资料</span><span className="pri pri--p1">{item.resourceType || '教程'}</span></div><div className="req-card__name">{item.title}</div>{item.description && <div className="req-card__content">{item.description}</div>}{item.resourceType === '账号' && item.account && <div className="operations-knowledge-account"><span>账号：{item.account}</span>{item.password && <span>密码：{visibleAccountPasswordId === item.id ? item.password : '••••••••'}</span>}</div>}{item.url ? <a className="operations-knowledge-link" href={item.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}><Icon name="link" size={12} /> 一键打开资料链接</a> : <span className="operations-knowledge-link operations-knowledge-link--empty">未添加资料链接</span>}{item.resourceType === '账号' && item.password && <button type="button" className="operations-knowledge-password-toggle" onClick={(event) => { event.stopPropagation(); setVisibleAccountPasswordId((current) => current === item.id ? null : item.id) }}><Icon name="eye" size={12} /> {visibleAccountPasswordId === item.id ? '隐藏密码' : '查看密码'}</button>}</article><div className="req-card__bottom-actions operations-knowledge-card-actions" onClick={(event) => event.stopPropagation()}><button className="req-card__add" type="button" onClick={() => setKnowledgeDraft({ ...item })} title="编辑资料"><Icon name="edit" size={13} /> 编辑</button><button className="req-card__delete" type="button" onClick={() => setState((current) => ({ ...current, tutorialCards: current.tutorialCards.filter((card) => card.id !== item.id) }))} title="删除资料"><span className="icon-circle"><Icon name="trash" size={13} /></span></button></div></div>) : <div className="status-group__empty">暂无资料卡片</div>}
+          </div></div>
+        </section> })}
+      </div></div>
+      {knowledgeDraft && <OpsModal title={knowledgeDraft.title ? '编辑资料' : '新增资料'} onClose={() => { setKnowledgeDraft(null); setKnowledgePasswordVisible(false) }}><form className="operations-form-grid" onSubmit={saveKnowledge}><Field label="资料名称" required><input autoFocus required className="text-input" value={knowledgeDraft.title} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, title: event.target.value })} /></Field><Field label="资料类型" required><div className="operations-resource-type-picker" role="radiogroup" aria-label="资料类型">{(['账号', '教程'] as ResourceType[]).map((resourceType) => <button key={resourceType} type="button" className={`operations-resource-type-option${(knowledgeDraft.resourceType || '教程') === resourceType ? ' is-active' : ''}`} role="radio" aria-checked={(knowledgeDraft.resourceType || '教程') === resourceType} onClick={() => { setKnowledgePasswordVisible(false); setKnowledgeDraft({ ...knowledgeDraft, resourceType }) }}>{resourceType}</button>)}</div></Field>{knowledgeDraft.resourceType === '账号' && <><Field label="账号" required><input className="text-input" required value={knowledgeDraft.account || ''} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, account: event.target.value })} placeholder="填写账号或邮箱" /></Field><Field label="密码" required><div className="operations-password-field"><input className="text-input" required type={knowledgePasswordVisible ? 'text' : 'password'} value={knowledgeDraft.password || ''} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, password: event.target.value })} placeholder="填写登录密码" /><button type="button" className="icon-btn" onClick={() => setKnowledgePasswordVisible((current) => !current)} aria-label={knowledgePasswordVisible ? '隐藏密码' : '显示密码'} title={knowledgePasswordVisible ? '隐藏密码' : '显示密码'}><Icon name="eye" size={14} /></button></div></Field></>}<Field label="链接"><input className="text-input" type="url" placeholder="https://" value={knowledgeDraft.url} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, url: event.target.value })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => { setKnowledgeDraft(null); setKnowledgePasswordVisible(false) }}>取消</button><button className="btn-primary" type="submit">保存资料</button></div></form></OpsModal>}
+      {knowledgeTypeDraft && <OpsModal title={knowledgeTypeDraft.title ? '编辑资料类型' : '新增资料类型'} onClose={() => setKnowledgeTypeDraft(null)}><form className="operations-form-grid" onSubmit={saveKnowledgeType}><Field label="类型名称" required><input autoFocus required className="text-input" value={knowledgeTypeDraft.title} onChange={(event) => setKnowledgeTypeDraft({ ...knowledgeTypeDraft, title: event.target.value })} /></Field><Field label="类型颜色"><input className="text-input" type="color" value={knowledgeTypeDraft.color} onChange={(event) => setKnowledgeTypeDraft({ ...knowledgeTypeDraft, color: event.target.value })} /></Field><Field label="类型说明"><textarea className="text-area" rows={3} value={knowledgeTypeDraft.description} onChange={(event) => setKnowledgeTypeDraft({ ...knowledgeTypeDraft, description: event.target.value })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setKnowledgeTypeDraft(null)}>取消</button><button className="btn-primary" type="submit">保存类型</button></div></form></OpsModal>}
+    </>
+  }
+  function renderProducts() {
+    const labels: Record<string, string> = { price: '售价', cost: '采购成本', shipping: '物流成本', paymentFee: '支付手续费', adCost: '预计投流成本', refundReserve: '退款预留' }
+    return <>
+      <div className="operations-section-head">
+        <div />
+        <button className="btn-primary" type="button" onClick={newProduct}><Icon name="plus" size={14} /> 添加商品</button>
+      </div>
+      <div className="operations-product-list">
+        {products.length ? products.map((item) => {
+          const images = item.images?.length ? item.images : (item.image ? [item.image] : [])
+          const imageIndex = Math.min(productImageIndexes[item.id] || 0, Math.max(images.length - 1, 0))
+          const contribution = item.price - item.cost - item.shipping - item.paymentFee - item.refundReserve
+          const afterAdProfit = contribution - item.adCost
+          const margin = item.price > 0 ? contribution / item.price * 100 : 0
+          const breakEvenRoas = contribution > 0 ? item.price / contribution : 0
+          return <article className="operations-product-row" key={item.id}>
+            <div className="operations-product-row__media">
+              <div className="operations-product-media operations-product-media--row">
+                {images[imageIndex] ? <img src={images[imageIndex]} alt={item.name} /> : <div className="operations-product-placeholder"><Icon name="image" size={26} /><span>暂无商品图片</span></div>}
+                {images.length > 1 && <>
+                  <button className="operations-product-arrow operations-product-arrow--prev" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex - 1 + images.length) % images.length }))} aria-label="上一张"><Icon name="chevronLeft" size={15} /></button>
+                  <button className="operations-product-arrow operations-product-arrow--next" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex + 1) % images.length }))} aria-label="下一张"><Icon name="chevronRight" size={15} /></button>
+                  <span className="operations-product-image-count">{imageIndex + 1}/{images.length}</span>
+                </>}
+              </div>
+              {images.length > 1 && <div className="operations-product-thumb-strip">{images.map((image, index) => <button type="button" key={`${image}-${index}`} className={`operations-product-thumb${index === imageIndex ? ' is-active' : ''}`} onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: index }))}><img src={image} alt={`${item.name} 缩略图 ${index + 1}`} /></button>)}</div>}
+            </div>
+            <div className="operations-product-row__body">
+              <div className="operations-product-row__top"><span className="operations-status operations-status--准备上架">{item.conclusion}</span><div className="operations-product-row__actions"><button className="card__act" type="button" onClick={() => { setProductTab('basic'); setProductDraft({ ...item }) }} title="编辑商品"><Icon name="edit" size={13} /></button><button className="card__act card__act--close" type="button" onClick={() => setState((current) => ({ ...current, products: current.products.filter((product) => product.id !== item.id) }))} title="删除商品"><Icon name="trash" size={13} /></button></div></div>
+              <h2>{item.name}</h2>
+              <p className="operations-product-description">{item.description || item.evidence || '暂无商品描述和选品结论'}</p>
+              <div className="operations-product-meta"><span>售价 <strong>¥{money(item.price)}</strong></span><span>库存 <strong>{item.inventory ?? 0}</strong></span><span>SKU <strong>{item.sku || '未填写'}</strong></span><span>供应商 <strong>{item.supplier?.startsWith('http') ? <a className="operations-product-source-link" href={item.supplier} target="_blank" rel="noreferrer">打开商品原链接 <Icon name="link" size={11} /></a> : (item.supplier || '未填写')}</strong></span></div>
+              <div className="operations-metrics"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>广告后利润<strong>¥{money(afterAdProfit)}</strong></span><span>毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div>
+            </div>
+          </article>
+        }) : <div className="operations-empty">还没有商品，点击“添加商品”开始建立第一条选品记录。</div>}
+      </div>
+      {productDraft && (() => {
+        const contribution = productDraft.price - productDraft.cost - productDraft.shipping - productDraft.paymentFee - productDraft.refundReserve
+        const margin = productDraft.price > 0 ? contribution / productDraft.price * 100 : 0
+        const breakEvenRoas = contribution > 0 ? productDraft.price / contribution : 0
+        return <OpsModal title={productDraft.name ? '编辑商品' : '添加商品'} onClose={() => setProductDraft(null)} wide>
+          <form className="operations-product-form" onSubmit={saveProduct}>
+            <div className="operations-product-tabs" role="tablist" aria-label="商品编辑分区"><button type="button" className={productTab === 'basic' ? 'is-active' : ''} onClick={() => setProductTab('basic')} role="tab" aria-selected={productTab === 'basic'}>商品信息</button><button type="button" className={productTab === 'pricing' ? 'is-active' : ''} onClick={() => setProductTab('pricing')} role="tab" aria-selected={productTab === 'pricing'}>定价与成本</button></div>
+            {productTab === 'basic' && <section className="operations-product-form__section"><div className="operations-product-form__title">商品信息</div><div className="operations-product-form__grid">
+              <Field label="商品标题" required><input autoFocus required className="text-input" value={productDraft.name} onChange={(e) => setProductDraft({ ...productDraft, name: e.target.value })} placeholder="例如：便携榨汁杯" /></Field>
+              <Field label="供应商 / 商品原链接"><input className="text-input" value={productDraft.supplier} onChange={(e) => setProductDraft({ ...productDraft, supplier: e.target.value })} placeholder="填写供应商名称或商品原链接" /></Field>
+              <Field label="SKU"><input className="text-input" value={productDraft.sku || ''} onChange={(e) => setProductDraft({ ...productDraft, sku: e.target.value })} placeholder="商品编码" /></Field>
+              <Field label="库存"><input className="text-input" type="number" min="0" step="1" value={productDraft.inventory ?? 0} onChange={(e) => setProductDraft({ ...productDraft, inventory: Number(e.target.value) })} /></Field>
+              <Field label="商品描述" required><textarea required className="text-area" rows={4} value={productDraft.description || ''} onChange={(e) => setProductDraft({ ...productDraft, description: e.target.value })} placeholder="商品卖点、适用人群和选品判断" /></Field>
+              <Field label="商品图片"><ProductImagePicker spaceId={spaceId} productId={productDraft.id} productName={productDraft.name} images={productDraft.images || []} fileIds={productDraft.imageFileIds || []} imagePaths={productDraft.imagePaths || []} onChange={(images, imageFileIds, imagePaths) => setProductDraft({ ...productDraft, images, imageFileIds, imagePaths, image: images[0] || '' })} /></Field>
+            </div></section>}
+            {productTab === 'pricing' && <section className="operations-product-form__section"><div className="operations-product-form__title">定价与成本</div><div className="operations-product-form__grid">
+              {(['price', 'cost', 'shipping', 'paymentFee', 'adCost', 'refundReserve'] as const).map((key) => <Field key={key} label={labels[key]}><input className="text-input" type="number" min="0" step="0.01" value={productDraft[key]} onChange={(e) => setProductDraft({ ...productDraft, [key]: Number(e.target.value) })} /></Field>)}
+              <Field label="商品状态"><select className="text-input" value={productDraft.conclusion} onChange={(e) => setProductDraft({ ...productDraft, conclusion: e.target.value as ProductConclusion })}>{['继续研究', '进入测试', '准备上架', '作为备选', '暂停'].map((value) => <option key={value}>{value}</option>)}</select></Field>
+            </div><div className="operations-calculator" aria-live="polite"><div className="operations-calculator__head"><strong>利润预估</strong><a href="https://ecomwith.com/zh/tools/pricing" target="_blank" rel="noreferrer">Ecomwith 定价工具 <Icon name="link" size={11} /></a></div><div className="operations-calculator__grid"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>贡献毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 CPA<strong>¥{money(Math.max(contribution, 0))}</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div><p>贡献利润 = 售价 − 采购 − 物流 − 手续费 − 退款预留；投流成本单独计算广告后利润。<a href="https://ecomwith.com/zh/tools/break-even-roas" target="_blank" rel="noreferrer">查看公式来源</a></p></div></section>}
+            <div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setProductDraft(null)}>取消</button><button className="btn-primary" type="submit">保存商品</button></div>
+          </form>
+        </OpsModal>
+      })()}
+    </>
+  }
+  function renderAds() { const spend = campaigns.reduce((sum, item) => sum + item.spend, 0); const revenue = campaigns.reduce((sum, item) => sum + item.revenue, 0); const orders = campaigns.reduce((sum, item) => sum + item.orders, 0); return <><div className="operations-section-head operations-section-head--compact"><span aria-hidden="true" /><button className="btn-primary" type="button" onClick={newCampaign}><Icon name="plus" size={14} /> 新增投流计划</button></div><div className="operations-kpi-row"><div><span>广告花费</span><strong>¥{money(spend)}</strong></div><div><span>广告收入</span><strong>¥{money(revenue)}</strong></div><div><span>ROAS</span><strong>{spend ? (revenue / spend).toFixed(2) : '0.00'}</strong></div></div><div className="operations-card-grid">{campaigns.length ? campaigns.map((item) => { const roas = item.spend ? item.revenue / item.spend : 0; const cpa = item.orders ? item.spend / item.orders : 0; const product = state.products.find((entry) => entry.id === item.productId); return <article className="operations-data-card" key={item.id}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.status}</span><div><button className="card__act" type="button" onClick={() => setCampaignDraft({ ...item })} title="编辑"><Icon name="edit" size={13} /></button><button className="card__act card__act--close" type="button" onClick={() => setState((current) => ({ ...current, campaigns: current.campaigns.filter((campaign) => campaign.id !== item.id) }))} title="删除"><Icon name="trash" size={13} /></button></div></div><h2>{item.name}</h2><p className="operations-muted">{item.platform} · {product?.name || '未关联商品'}</p><div className="operations-metrics"><span>花费<strong>¥{money(item.spend)}</strong></span><span>订单<strong>{item.orders}</strong></span><span>ROAS<strong>{roas.toFixed(2)}</strong></span><span>CPA<strong>¥{money(cpa)}</strong></span></div><p className="operations-card-copy">{item.notes || '暂无投放结论'}</p></article> }) : <div className="operations-empty">还没有投流计划，选品进入测试后可以在这里建立第一条广告记录。</div>}</div>{campaignDraft && <OpsModal title={campaignDraft.name ? '编辑投流计划' : '新增投流计划'} onClose={() => setCampaignDraft(null)} wide><form className="operations-form-grid" onSubmit={saveCampaign}><Field label="计划名称" required><input autoFocus required className="text-input" value={campaignDraft.name} onChange={(e) => setCampaignDraft({ ...campaignDraft, name: e.target.value })} /></Field><Field label="投放平台"><select className="text-input" value={campaignDraft.platform} onChange={(e) => setCampaignDraft({ ...campaignDraft, platform: e.target.value })}><option>Meta</option><option>Google</option><option>TikTok</option><option>其他</option></select></Field><Field label="关联商品"><select className="text-input" value={campaignDraft.productId} onChange={(e) => setCampaignDraft({ ...campaignDraft, productId: e.target.value })}><option value="">暂不关联</option>{state.products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></Field><Field label="投放目标"><input className="text-input" value={campaignDraft.objective} onChange={(e) => setCampaignDraft({ ...campaignDraft, objective: e.target.value })} /></Field><Field label="受众"><textarea className="text-area" rows={3} value={campaignDraft.audience} onChange={(e) => setCampaignDraft({ ...campaignDraft, audience: e.target.value })} /></Field><Field label="素材"><textarea className="text-area" rows={3} value={campaignDraft.creative} onChange={(e) => setCampaignDraft({ ...campaignDraft, creative: e.target.value })} /></Field><Field label="落地页"><input className="text-input" type="url" value={campaignDraft.landingPage} onChange={(e) => setCampaignDraft({ ...campaignDraft, landingPage: e.target.value })} /></Field><Field label="投放状态"><select className="text-input" value={campaignDraft.status} onChange={(e) => setCampaignDraft({ ...campaignDraft, status: e.target.value as CampaignStatus })}><option>准备中</option><option>测试中</option><option>放量中</option><option>暂停</option></select></Field>{(['dailyBudget', 'totalBudget', 'spend', 'orders', 'revenue'] as const).map((key) => <Field key={key} label={({ dailyBudget: '日预算', totalBudget: '总预算', spend: '已花费', orders: '订单数', revenue: '广告收入' } as Record<string, string>)[key]}><input className="text-input" type="number" min="0" step="0.01" value={campaignDraft[key]} onChange={(e) => setCampaignDraft({ ...campaignDraft, [key]: Number(e.target.value) })} /></Field>)}<Field label="投放结论"><textarea className="text-area" rows={3} value={campaignDraft.notes} onChange={(e) => setCampaignDraft({ ...campaignDraft, notes: e.target.value })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setCampaignDraft(null)}>取消</button><button className="btn-primary" type="submit">保存计划</button></div></form></OpsModal>}</> }
+  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><button className="btn-primary" type="button" onClick={newReview}><Icon name="plus" size={14} /> 新增复盘</button></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <article className="operations-data-card" key={item.id}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><button className="card__act" type="button" onClick={() => setReviewDraft({ ...item })} title="编辑"><Icon name="edit" size={13} /></button><button className="card__act card__act--close" type="button" onClick={() => setState((current) => ({ ...current, reviews: current.reviews.filter((review) => review.id !== item.id) }))} title="删除"><Icon name="trash" size={13} /></button></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></article>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={() => setReviewDraft(null)} wide><form className="operations-form-grid" onSubmit={saveReview}><Field label="复盘标题" required><input autoFocus required className="text-input" value={reviewDraft.title} onChange={(e) => setReviewDraft({ ...reviewDraft, title: e.target.value })} /></Field><Field label="日期"><input className="text-input" type="date" value={reviewDraft.date} onChange={(e) => setReviewDraft({ ...reviewDraft, date: e.target.value })} /></Field><Field label="复盘范围"><input className="text-input" value={reviewDraft.scope} onChange={(e) => setReviewDraft({ ...reviewDraft, scope: e.target.value })} /></Field><Field label="结论"><select className="text-input" value={reviewDraft.decision} onChange={(e) => setReviewDraft({ ...reviewDraft, decision: e.target.value as ReviewDecision })}><option>继续</option><option>调整</option><option>暂停</option></select></Field><Field label="完成了什么"><textarea className="text-area" rows={4} value={reviewDraft.completed} onChange={(e) => setReviewDraft({ ...reviewDraft, completed: e.target.value })} /></Field><Field label="问题与差异"><textarea className="text-area" rows={4} value={reviewDraft.problems} onChange={(e) => setReviewDraft({ ...reviewDraft, problems: e.target.value })} /></Field><Field label="关键洞察"><textarea className="text-area" rows={4} value={reviewDraft.insight} onChange={(e) => setReviewDraft({ ...reviewDraft, insight: e.target.value })} /></Field><Field label="下一步行动"><textarea className="text-area" rows={4} value={reviewDraft.nextAction} onChange={(e) => setReviewDraft({ ...reviewDraft, nextAction: e.target.value })} /></Field><Field label="关联资料"><FileNames spaceId={spaceId} entityId={reviewDraft.id} files={reviewDraft.attachments} onChange={(attachments) => setReviewDraft({ ...reviewDraft, attachments })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setReviewDraft(null)}>取消</button><button className="btn-primary" type="submit">保存复盘</button></div></form></OpsModal>}</> }
+  const activeMenuDef = menus.find((menu) => menu.key === activeMenu) || menus[0]
+  return <div className="operations-workspace"><div className="operations-workspace__body">{activeMenu === 'ops-products' ? renderProducts() : activeMenu === 'ops-ads' ? renderAds() : renderKnowledge()}</div>{activeMenuDef && <span className="sr-only">{activeMenuDef.label}</span>}</div>
+}

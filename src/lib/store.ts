@@ -95,6 +95,7 @@ export interface ProjectTaskAttachment {
   size: number
   url: string
   kind: 'image' | 'file'
+  relativePath?: string
 }
 
 export interface ProjectTask {
@@ -152,6 +153,7 @@ export interface RequirementAttachment {
   size: number
   url: string
   kind: 'image' | 'file'
+  relativePath?: string
 }
 
 export interface Competitor {
@@ -160,6 +162,7 @@ export interface Competitor {
   name: string
   url: string
   description?: string
+  image?: RequirementAttachment
   createdAt: number
 }
 
@@ -236,6 +239,7 @@ export interface KnowledgeResource {
   createdAt: number
   updatedAt?: number
   rotation?: number
+  relativePath?: string
 }
 
 export interface MenuDef {
@@ -264,11 +268,9 @@ export const MENUS: Record<TypeName, MenuDef[]> = {
     { key: 'res', label: '资源安排', icon: 'clock' },
   ],
   独立站电商运营: [
-    { key: 'prod', label: '选品记录', icon: 'tag' },
-    { key: 'ads', label: '流量投放', icon: 'trend' },
-    { key: 'order', label: '订单跟踪', icon: 'doc' },
-    { key: 'ship', label: '物流发货', icon: 'box' },
-    { key: 'fin', label: '成本核算', icon: 'calc' },
+    { key: 'ops-knowledge', label: '资料库', icon: 'doc' },
+    { key: 'ops-products', label: '选品与成本', icon: 'tag' },
+    { key: 'ops-ads', label: '投流与数据', icon: 'trend' },
   ],
 }
 

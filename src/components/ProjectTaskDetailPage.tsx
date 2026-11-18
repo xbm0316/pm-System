@@ -4,6 +4,7 @@ import DatePicker from './DatePicker'
 import DateRangePicker from './DateRangePicker'
 import { TASK_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type TaskStatus } from '../lib/store'
 import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
+import FileAttachmentList from './FileAttachmentList'
 
 type TaskTab = 'content' | 'issues'
 
@@ -31,7 +32,6 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
   const [draftContent, setDraftContent] = useState(task.content)
   const [draftStartDate, setDraftStartDate] = useState(task.startDate || '')
   const [draftEndDate, setDraftEndDate] = useState(task.endDate || '')
-  const [previewAttachment, setPreviewAttachment] = useState<ProjectTaskAttachment | null>(null)
   const [deleteAttachment, setDeleteAttachment] = useState<ProjectTaskAttachment | null>(null)
   const [attachmentError, setAttachmentError] = useState('')
   const bodyRef = useRef<HTMLElement>(null)
@@ -97,7 +97,6 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
     void deleteLocalFile(attachment.fileId || attachment.id)
     onUpdateTask(task.id, { attachments: (task.attachments || []).filter((item) => item.id !== attachment.id) })
     setDeleteAttachment(null)
-    if (previewAttachment?.id === attachment.id) setPreviewAttachment(null)
   }
 
   function addIssue() {
@@ -172,7 +171,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
             </section>
             <section className="project-task-section">
               <div className="project-task-section__label">任务相关文件</div>
-              {task.attachments && task.attachments.length > 0 ? <div className="project-task-attachments">{task.attachments.map((attachment) => <div className="project-task-attachment-wrap" key={attachment.id}><button className="project-task-attachment" type="button" onClick={() => setPreviewAttachment(attachment)}>{attachment.kind === 'image' ? <img src={attachment.url} alt={attachment.name} /> : <span className="project-task-attachment__file">文件</span>}<span>{attachment.name}</span></button>{editing && <button type="button" className="project-task-attachment__remove" onClick={() => setDeleteAttachment(attachment)} title={`删除附件 ${attachment.name}`} aria-label={`删除附件 ${attachment.name}`}><Icon name="trash" size={13} /></button>}</div>)}</div> : <div className="project-task-section__text">暂无相关文件</div>}
+              {task.attachments && task.attachments.length > 0 ? <FileAttachmentList files={task.attachments} onDelete={editing ? (attachment) => setDeleteAttachment(attachment as ProjectTaskAttachment) : undefined} /> : <div className="project-task-section__text">暂无相关文件</div>}
               {attachmentError && <div className="form-error" role="alert">{attachmentError}</div>}
               {editing && <label className="project-task-upload"><Icon name="plus" size={14} /> 添加多个文件<input type="file" multiple onChange={addAttachments} /></label>}
             </section>
@@ -204,7 +203,6 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
           </div>
         )}
       </main>
-      {previewAttachment && <div className="overlay" onClick={() => setPreviewAttachment(null)}><div className="modal attachment-preview" onClick={(event) => event.stopPropagation()}><div className="modal__title">{previewAttachment.name}</div>{previewAttachment.kind === 'image' ? <img className="attachment-preview__image" src={previewAttachment.url} alt={previewAttachment.name} /> : <div className="attachment-preview__file"><span className="attachment-preview__file-icon">文件</span><span>{previewAttachment.type || '未知文件类型'}</span><span>{previewAttachment.size ? `${Math.ceil(previewAttachment.size / 1024)} KB` : '大小未知'}</span></div>}<div className="modal__actions"><a className="btn-ghost attachment-preview__download" href={previewAttachment.url} download={previewAttachment.name}>下载附件</a><button className="btn-ghost btn-ghost--danger" type="button" onClick={() => { setDeleteAttachment(previewAttachment); setPreviewAttachment(null) }}><Icon name="trash" size={13} /> 删除</button><button className="btn-primary" type="button" onClick={() => setPreviewAttachment(null)}>关闭</button></div></div></div>}
       {deleteAttachment && <div className="overlay" onClick={() => setDeleteAttachment(null)}><div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">确认删除附件？</div><div className="delete-confirm-modal__text">删除「{deleteAttachment.name}」后无法恢复。</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setDeleteAttachment(null)}>取消</button><button type="button" className="btn-primary btn-primary--danger" onClick={() => removeAttachment(deleteAttachment)}>确认删除</button></div></div></div>}
     </div>
   )

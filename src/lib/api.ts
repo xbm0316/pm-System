@@ -183,6 +183,16 @@ export async function insertCompetitor(c: Competitor) {
   if (error) console.error('insertCompetitor', error)
 }
 
+export async function updateCompetitor(id: string, patch: Partial<Pick<Competitor, 'name' | 'url' | 'description'>>) {
+  const { error } = await supabase.from('competitors').update({ ...patch, url: patch.url ?? null }).eq('id', id)
+  if (error) console.error('updateCompetitor', error)
+}
+
+export async function deleteCompetitorRow(id: string) {
+  const { error } = await supabase.from('competitors').delete().eq('id', id)
+  if (error) console.error('deleteCompetitor', error)
+}
+
 // ---------- 复盘 ----------
 
 export async function fetchRetros(reqIds?: string[]): Promise<Retro[]> {

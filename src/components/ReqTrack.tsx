@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Icon from './Icon'
 import {
   REQ_STATUSES,
@@ -8,6 +8,7 @@ import {
   type Competitor,
 } from '../lib/store'
 import { deleteLocalFile } from '../lib/localFiles'
+import FileAttachmentList from './FileAttachmentList'
 
 function statusKey(status: RequirementStatus) {
   return status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'
@@ -25,17 +26,7 @@ interface Props {
 
 export default function ReqTrack({ spaceId, requirements, onStatusChange, focusId, searchQuery = '', competitors, onUpdateAttachments }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [previewAttachment, setPreviewAttachment] = useState<RequirementAttachment | null>(null)
   const [deleteAttachment, setDeleteAttachment] = useState<RequirementAttachment | null>(null)
-
-  useEffect(() => {
-    if (!previewAttachment) return
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setPreviewAttachment(null)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [previewAttachment])
 
   const query = searchQuery.trim().toLocaleLowerCase()
   const spaceList = requirements.filter((r) => r.spaceId === spaceId)
@@ -116,43 +107,12 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
         <div className="track-detail__related">
           <div className="field-label">关联资料</div>
           {r.attachments && r.attachments.length > 0 ? (
-            <div className="track-attachment-list">
-              {r.attachments.map((attachment) => (
-                <div className="track-attachment-wrap" key={`related-${attachment.id}`}>
-                <button className="track-attachment" type="button" onClick={() => setPreviewAttachment(attachment)}>
-                  {attachment.kind === 'image' ? <img src={attachment.url} alt={attachment.name} /> : <span className="track-attachment__file">文件</span>}
-                  <span>{attachment.name}</span>
-                </button>
-                <button type="button" className="track-attachment__remove" onClick={() => setDeleteAttachment(attachment)} title={`删除附件 ${attachment.name}`} aria-label={`删除附件 ${attachment.name}`}><Icon name="trash" size={13} /></button>
-                </div>
-              ))}
-            </div>
+            <FileAttachmentList files={r.attachments} onDelete={(attachment) => setDeleteAttachment(attachment as RequirementAttachment)} />
           ) : (
             <div className="track-detail__empty">暂无关联资料</div>
           )}
         </div>
         </div>
-        {previewAttachment && (
-        <div className="overlay" onClick={() => setPreviewAttachment(null)}>
-          <div className="modal attachment-preview" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">{previewAttachment.name}</div>
-            {previewAttachment.kind === 'image' ? (
-              <img className="attachment-preview__image" src={previewAttachment.url} alt={previewAttachment.name} />
-            ) : (
-              <div className="attachment-preview__file">
-                <span className="attachment-preview__file-icon">文件</span>
-                <span>{previewAttachment.type || '未知文件类型'}</span>
-                <span>{previewAttachment.size ? `${Math.ceil(previewAttachment.size / 1024)} KB` : '大小未知'}</span>
-              </div>
-            )}
-            <div className="modal__actions">
-              <a className="btn-ghost attachment-preview__download" href={previewAttachment.url} download={previewAttachment.name}>下载附件</a>
-              <button className="btn-ghost btn-ghost--danger" onClick={() => { setDeleteAttachment(previewAttachment); setPreviewAttachment(null) }}><Icon name="trash" size={13} /> 删除</button>
-              <button className="btn-primary" onClick={() => setPreviewAttachment(null)}>关闭</button>
-            </div>
-          </div>
-        </div>
-        )}
         {deleteAttachment && <div className="overlay" onClick={() => setDeleteAttachment(null)}><div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}><div className="modal__title">确认删除附件？</div><div className="delete-confirm-modal__text">删除「{deleteAttachment.name}」后无法恢复。</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => setDeleteAttachment(null)}>取消</button><button type="button" className="btn-primary btn-primary--danger" onClick={() => { void deleteLocalFile(deleteAttachment.fileId || deleteAttachment.id); onUpdateAttachments(r.id, (r.attachments || []).filter((item) => item.id !== deleteAttachment.id)); setDeleteAttachment(null) }}>确认删除</button></div></div></div>}
       </>
     )

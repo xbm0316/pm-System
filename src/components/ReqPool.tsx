@@ -13,6 +13,7 @@ import {
   uid,
 } from '../lib/store'
 import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
+import FileAttachmentList from './FileAttachmentList'
 
 interface Props {
   spaceId: string
@@ -402,31 +403,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
                   <small>支持同时选择多个关联资料，当前仅本地预览</small>
                 </span>
               </label>
-              {attachments.length > 0 && (
-                <div className="attachment-list">
-                  {attachments.map((attachment) => (
-                    <div className="attachment-item" key={attachment.id}>
-                      {attachment.kind === 'image' ? (
-                        <img className="attachment-item__thumb" src={attachment.url} alt={attachment.name} />
-                      ) : (
-                        <div className="attachment-item__file-icon">文件</div>
-                      )}
-                      <div className="attachment-item__meta">
-                        <span>{attachment.name}</span>
-                        <small>{formatSize(attachment.size)}</small>
-                      </div>
-                      <button
-                        type="button"
-                        className="attachment-item__remove"
-                        onClick={() => removeAttachment(attachment.id)}
-                        aria-label={`删除附件 ${attachment.name}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {attachments.length > 0 && <FileAttachmentList files={attachments} onDelete={(attachment) => removeAttachment(attachment.id)} />}
               {attachmentError && <div className="form-error" role="alert">{attachmentError}</div>}
             </div>
 

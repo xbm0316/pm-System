@@ -9,9 +9,13 @@ export interface LocalAttachment {
   kind: 'image' | 'file'
   url: string
   relativePath?: string
+  storageScope?: string
+  storageBackend?: 'helper' | 'browser'
   createdAt?: number
   updatedAt?: number
 }
+
+export type LocalFileInfo = LocalAttachment
 
 type DirectoryHandle = FileSystemDirectoryHandle
 type DirectoryHandleWithPermission = DirectoryHandle & {
@@ -30,6 +34,7 @@ type StoredFile = {
   size: number
   blob: Blob
   createdAt: number
+  storageBackend?: 'helper' | 'browser'
 }
 
 type DirectoryPickerWindow = Window & {
@@ -184,6 +189,31 @@ export function localFileUrl(fileId: string) {
   return `${LOCAL_FILE_PREFIX}${encodeURIComponent(fileId)}`
 }
 
+function helperAvailable() {
+  return typeof window !== 'undefined' && (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
+}
+
+function helperUrl(path: string) {
+  return `/__local-files${path}`
+}
+
+function toBase64(buffer: ArrayBuffer) {
+  let binary = ''
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)))
+  return btoa(binary)
+}
+
+async function helperRequest(path: string, init?: RequestInit) {
+  if (!helperAvailable()) return null
+  try {
+    const response = await fetch(helperUrl(path), init)
+    if (!response.ok) return null
+    return await response.json() as { path?: string }
+  } catch { return null }
+}
+
 export async function registerLocalFileServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
   try {
@@ -194,7 +224,6 @@ export async function registerLocalFileServiceWorker() {
 }
 
 export async function uploadLocalFile(file: File | Blob, context: { spaceId: string; entityType: string; entityId: string; fileName?: string; pathSegments?: string[] }) {
-  const root = await ensureDirectoryHandle()
   const id = crypto.randomUUID()
   const originalName = context.fileName || (file instanceof File ? file.name : 'attachment')
   const baseSegments = context.pathSegments?.length ? context.pathSegments : [context.spaceId, context.entityType, context.entityId]
@@ -202,6 +231,17 @@ export async function uploadLocalFile(file: File | Blob, context: { spaceId: str
   // 保持现有业务路径层级；账号隔离通过 IndexedDB 的 ownerPhone 元数据完成。
   const directorySegments = ['upload', ...baseSegments.map((segment) => safeSegment(segment, 'unassigned'))]
   let relativePath = [...directorySegments, cleanName].join('/')
+  const helperSaved = await helperRequest('/save-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spaceId: context.spaceId, relativePath, data: toBase64(await file.arrayBuffer()) }) })
+  if (helperSaved) {
+    relativePath = helperSaved.path || relativePath
+    const blob = file instanceof Blob ? file : new Blob([file])
+    const now = Date.now()
+    await idbPut(FILE_STORE, { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now, storageBackend: 'helper' } satisfies StoredFile)
+    const objectUrl = URL.createObjectURL(blob)
+    objectUrls.set(id, objectUrl)
+    return { id, fileId: id, name: originalName, fileName: originalName, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size, kind: (file.type || '').startsWith('image/') ? 'image' as const : 'file' as const, url: objectUrl, relativePath, storageScope: context.spaceId, storageBackend: 'helper', createdAt: now, updatedAt: now } satisfies LocalAttachment
+  }
+  const root = await ensureDirectoryHandle()
   let target: FileSystemFileHandle
   let suffix = 1
   while (true) {
@@ -221,17 +261,21 @@ export async function uploadLocalFile(file: File | Blob, context: { spaceId: str
   await writable.close()
   const blob = file instanceof Blob ? file : new Blob([file])
   const now = Date.now()
-  await idbPut(FILE_STORE, { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now } satisfies StoredFile)
+  await idbPut(FILE_STORE, { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now, storageBackend: 'browser' } satisfies StoredFile)
   const objectUrl = URL.createObjectURL(blob)
   objectUrls.set(id, objectUrl)
-  return { id, fileId: id, name: originalName, fileName: originalName, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size, kind: (file.type || '').startsWith('image/') ? 'image' as const : 'file' as const, url: objectUrl, relativePath, createdAt: now, updatedAt: now } satisfies LocalAttachment
+  return { id, fileId: id, name: originalName, fileName: originalName, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size, kind: (file.type || '').startsWith('image/') ? 'image' as const : 'file' as const, url: objectUrl, relativePath, storageScope: context.spaceId, storageBackend: 'browser', createdAt: now, updatedAt: now } satisfies LocalAttachment
 }
 
 export async function deleteLocalFile(fileId?: string) {
   if (!fileId) return
   const record = await idbGet<StoredFile>(FILE_STORE, fileId)
   if (record) {
-    try { await removeFile(await ensureDirectoryHandle(), record.relativePath) } catch { /* file may already be removed */ }
+    if (record.storageBackend === 'helper') {
+      await helperRequest(`/delete-file?spaceId=${encodeURIComponent(record.spaceId)}&path=${encodeURIComponent(record.relativePath)}`, { method: 'POST' })
+    } else {
+      try { await removeFile(await ensureDirectoryHandle(), record.relativePath) } catch { /* file may already be removed */ }
+    }
   }
   const objectUrl = objectUrls.get(fileId)
   if (objectUrl) URL.revokeObjectURL(objectUrl)
@@ -242,7 +286,56 @@ export async function deleteLocalFile(fileId?: string) {
 export async function listLocalFiles(entityType: string, entityId: string) {
   const ownerPhone = currentOwnerPhone()
   const records = (await idbAll()).filter((record) => record.entityType === entityType && record.entityId === entityId && (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041')))
-  return records.map((record) => ({ id: record.id, fileId: record.id, name: record.originalName, fileName: record.originalName, type: record.mimeType, mimeType: record.mimeType, size: record.size, kind: record.mimeType.startsWith('image/') ? 'image' as const : 'file' as const, url: localFileUrl(record.id), relativePath: record.relativePath, createdAt: record.createdAt, updatedAt: record.createdAt }))
+  return records.map((record) => ({ id: record.id, fileId: record.id, name: record.originalName, fileName: record.originalName, type: record.mimeType, mimeType: record.mimeType, size: record.size, kind: record.mimeType.startsWith('image/') ? 'image' as const : 'file' as const, url: localFileUrl(record.id), relativePath: record.relativePath, storageScope: record.spaceId, storageBackend: record.storageBackend || 'browser', createdAt: record.createdAt, updatedAt: record.createdAt }))
+}
+
+/** Read persisted metadata for one attachment. This is used to hydrate older
+ * records that only stored a file id and to keep previews working after a
+ * refresh. */
+export async function getLocalFile(fileId?: string): Promise<LocalAttachment | null> {
+  if (!fileId) return null
+  const record = await idbGet<StoredFile>(FILE_STORE, fileId)
+  if (!record || (record.ownerPhone && record.ownerPhone !== currentOwnerPhone())) return null
+  return {
+    id: record.id,
+    fileId: record.id,
+    name: record.originalName,
+    fileName: record.originalName,
+    type: record.mimeType,
+    mimeType: record.mimeType,
+    size: record.size,
+    kind: record.mimeType.startsWith('image/') ? 'image' : 'file',
+    url: localFileUrl(record.id),
+    relativePath: record.relativePath,
+    storageScope: record.spaceId,
+    storageBackend: record.storageBackend || 'browser',
+    createdAt: record.createdAt,
+    updatedAt: record.createdAt,
+  }
+}
+
+/**
+ * Browser security does not expose an OS-level "reveal in Finder/Explorer"
+ * API. We still validate the folder and return its real relative path so the
+ * UI can offer a safe, honest fallback (copy the path / open the in-app file).
+ */
+export async function openLocalFolder(relativePath?: string, storageScope?: string, storageBackend?: 'helper' | 'browser') {
+  const path = String(relativePath || '').split('/').filter(Boolean)
+  if (path.length) path.pop()
+  const relativeDirectory = path.join('/') || 'upload'
+  // The browser cannot call Finder/Explorer itself. During local development,
+  // the dev helper exposes a localhost-only bridge that performs that native
+  // action for us. It is intentionally best-effort and never blocks the
+  // browser-only fallback below.
+  if (storageBackend !== 'browser' && typeof window !== 'undefined') {
+    try {
+      const response = await fetch(helperUrl(`/open-folder?spaceId=${encodeURIComponent(storageScope || '')}&path=${encodeURIComponent(relativeDirectory)}`), { method: 'POST' })
+      if (response.ok) return { path: relativeDirectory, native: true }
+    } catch { /* helper is optional */ }
+  }
+  const root = await ensureDirectoryHandle()
+  await getNestedDirectory(root, path, false)
+  return { path: relativeDirectory, native: false }
 }
 
 export async function deleteLocalFilesForEntity(entityType: string, entityId: string) {
