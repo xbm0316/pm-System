@@ -6441,7 +6441,9 @@ body {
 .operations-knowledge-link:hover { text-decoration: underline; }
 .operations-knowledge-link--empty { color: var(--text-3); }
 .operations-knowledge-account { display: grid; gap: 3px; margin-top: 10px; color: var(--text-2); font-size: 10px; line-height: 1.45; }
-.operations-knowledge-password-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; margin-top: 7px; padding: 0; color: var(--text-3); font-size: 10px; }
+.operations-knowledge-password { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.operations-knowledge-password > span { min-width: 0; overflow-wrap: anywhere; }
+.operations-knowledge-password-toggle { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 4px; padding: 0; color: var(--text-3); font-size: 10px; white-space: nowrap; }
 .operations-knowledge-password-toggle:hover { color: var(--primary); }
 .operations-password-field { display: flex; align-items: center; gap: 7px; }
 .operations-password-field .text-input { min-width: 0; flex: 1; }

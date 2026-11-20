@@ -12,7 +12,7 @@ type CampaignStatus = '准备中' | '测试中' | '放量中' | '暂停'
 type ReviewDecision = '继续' | '调整' | '暂停'
 type ResourceType = '账号' | '教程'
 interface TutorialType { id: string; title: string; description: string; color: string }
-interface TutorialCard { id: string; typeId: string; title: string; description: string; url: string; source: string; resourceType?: ResourceType; account?: string; password?: string; goal: string; steps: string; outputs: string; status: LearningStatus; notes: string; attachments: string[]; nextAction: string; reviewDate: string; updatedAt: number }
+interface TutorialCard { id: string; typeId: string; title: string; description: string; url: string; source: string; resourceType?: ResourceType; account?: string; password?: string; goal: string; steps: string; outputs: string; status: LearningStatus; notes: string; attachments: string[]; nextAction: string; reviewDate: string; createdAt?: number; updatedAt: number }
 interface OpsProduct { id: string; name: string; description?: string; sku?: string; inventory?: number; image: string; images?: string[]; imageFileIds?: string[]; imagePaths?: string[]; supplier: string; cost: number; price: number; shipping: number; paymentFee: number; adCost: number; refundReserve: number; evidence: string; competition: string; fulfillment: string; materials: string; conclusion: ProductConclusion; attachments: string[]; createdAt: number }
 interface OpsCampaign { id: string; name: string; platform: string; productId: string; landingPage: string; dailyBudget: number; totalBudget: number; spend: number; orders: number; revenue: number; status: CampaignStatus; notes: string; createdAt: number }
 interface OpsReview { id: string; title: string; date: string; scope: string; completed: string; problems: string; insight: string; decision: ReviewDecision; nextAction: string; attachments: LocalAttachment[]; createdAt: number }
@@ -57,7 +57,7 @@ tutorialSeeds.push(
   { typeId: 'tools', title: 'UTM 生成器', description: '为广告、内容和渠道生成可追踪链接。', url: `${TOOLS_BASE}utm-builder`, source: 'Ecomwith 工具', goal: '让来源数据可以回查。', steps: '填写来源\\n填写媒介\\n生成链接', outputs: 'UTM 链接' },
   { typeId: 'traffic', title: 'Meta / Google / TikTok 投流资料', description: '这里保存外部投流教程、广告账户资料、素材和数据追踪记录。', url: '', source: '我的外部资料', goal: '把投流学习与实际广告计划关联起来。', steps: '添加外部链接\\n记录广告账户\\n记录素材与受众', outputs: '投流资料\\n广告计划\\n数据复盘' },
 )
-function initialCards(): TutorialCard[] { const now = Date.now(); return tutorialSeeds.map((definition, index) => ({ id: `tutorial-${index + 1}`, ...definition, resourceType: '教程', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', updatedAt: now })) }
+function initialCards(): TutorialCard[] { const now = Date.now(); return tutorialSeeds.map((definition, index) => ({ id: `tutorial-${index + 1}`, ...definition, resourceType: '教程', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', createdAt: now, updatedAt: now })) }
 function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
 function readState(ownerPhone: string, spaceId: string): OperationsState { try { const raw = localStorage.getItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`); if (!raw) return initialState(); const parsed = JSON.parse(raw) as Partial<OperationsState>; return { tutorialCards: Array.isArray(parsed.tutorialCards) && parsed.tutorialCards.length ? parsed.tutorialCards : initialCards(), products: Array.isArray(parsed.products) ? parsed.products.map((item) => ({ ...item, images: Array.isArray(item.images) ? item.images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) : (item.image ? [item.image] : []) })) : [], campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [], reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({ ...item, attachments: Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is LocalAttachment => Boolean(entry && typeof entry === 'object' && (entry as LocalAttachment).id)).map((entry) => ({ ...entry, url: entry.fileId ? localFileUrl(entry.fileId) : entry.url })) : [] })) : [], knowledgeTypes: Array.isArray(parsed.knowledgeTypes) && parsed.knowledgeTypes.length ? parsed.knowledgeTypes : tutorialTypes } } catch { return initialState() } }
 function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
@@ -111,14 +111,38 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
   const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
   useEffect(() => { setState(readState(ownerPhone, spaceId)) }, [ownerPhone, spaceId])
   useEffect(() => { localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(state)) }, [ownerPhone, spaceId, state])
-  const cards = useMemo(() => state.tutorialCards.filter((item) => !query || `${item.title} ${item.description} ${item.notes} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.tutorialCards])
+  const cards = useMemo(() => state.tutorialCards
+    .filter((item) => !query || `${item.title} ${item.description} ${item.notes} ${item.status}`.toLocaleLowerCase().includes(query))
+    .sort((a, b) => (b.createdAt ?? b.updatedAt) - (a.createdAt ?? a.updatedAt)), [query, state.tutorialCards])
   const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier} ${item.conclusion}`.toLocaleLowerCase().includes(query)), [query, state.products])
   const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
   function newKnowledge(typeId = knowledgeTypeId) { setKnowledgePasswordVisible(false); setKnowledgeDraft({ id: uid(), typeId, title: '', description: '', url: '', source: '', resourceType: '教程', account: '', password: '', goal: '', steps: '', outputs: '', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', updatedAt: Date.now() }) }
   function newKnowledgeType() { setKnowledgeTypeDraft({ id: uid(), title: '', description: '', color: ['#0951C3', '#0e9b83', '#e39a26', '#df6d5c', '#bd5bb4'][knowledgeTypes.length % 5] }) }
   function saveKnowledgeType(event: FormEvent) { event.preventDefault(); const draft = knowledgeTypeDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, knowledgeTypes: [...(current.knowledgeTypes || tutorialTypes).filter((item) => item.id !== draft.id), { ...draft, title: draft.title.trim() }] })); setKnowledgeTypeId(draft.id); setKnowledgeTypeDraft(null) }
   function deleteKnowledgeType(typeId: string) { if (knowledgeTypes.length <= 1) return; const nextTypes = knowledgeTypes.filter((item) => item.id !== typeId); setState((current) => ({ ...current, knowledgeTypes: nextTypes, tutorialCards: current.tutorialCards.filter((item) => item.typeId !== typeId) })); if (knowledgeTypeId === typeId) setKnowledgeTypeId(nextTypes[0].id) }
-  function saveKnowledge(event: FormEvent) { event.preventDefault(); const draft = knowledgeDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, tutorialCards: [...current.tutorialCards.filter((item) => item.id !== draft.id), { ...draft, title: draft.title.trim(), url: draft.url.trim(), account: draft.resourceType === '账号' ? draft.account?.trim() : '', password: draft.resourceType === '账号' ? draft.password : '', updatedAt: Date.now() }] })); setKnowledgeDraft(null) }
+  function saveKnowledge(event: FormEvent) {
+    event.preventDefault()
+    const draft = knowledgeDraft
+    if (!draft || !draft.title.trim()) return
+    const now = Date.now()
+    setState((current) => {
+      const existing = current.tutorialCards.find((item) => item.id === draft.id)
+      const saved: TutorialCard = {
+        ...draft,
+        title: draft.title.trim(),
+        url: draft.url.trim(),
+        account: draft.resourceType === '账号' ? draft.account?.trim() : '',
+        password: draft.resourceType === '账号' ? draft.password : '',
+        createdAt: existing?.createdAt ?? existing?.updatedAt ?? now,
+        updatedAt: now,
+      }
+      const tutorialCards = existing
+        ? current.tutorialCards.map((item) => item.id === saved.id ? saved : item)
+        : [...current.tutorialCards, saved]
+      return { ...current, tutorialCards }
+    })
+    setKnowledgeDraft(null)
+  }
   function newProduct() { setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', inventory: 0, image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', conclusion: '继续研究', attachments: [], createdAt: Date.now() }) }
   function saveProduct(event: FormEvent) { event.preventDefault(); const draft = productDraft; if (!draft || !draft.name.trim()) return; setState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), draft] })); setProductDraft(null) }
   function newCampaign() { setCampaignDraft({ id: uid(), name: '', platform: 'Meta', productId: '', landingPage: '', dailyBudget: 0, totalBudget: 0, spend: 0, orders: 0, revenue: 0, status: '准备中', notes: '', createdAt: Date.now() }) }
@@ -133,7 +157,61 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
         {knowledgeTypes.map((type) => { const typeCards = cards.filter((item) => item.typeId === type.id); return <section className="status-group operations-knowledge-group" key={type.id} style={{ '--status-accent': type.color, '--status-soft': `${type.color}18` } as React.CSSProperties}>
           <div className="status-group__head operations-knowledge-group__head"><div className="operations-knowledge-group__title"><span className="status-group__name">{type.title}</span><span className="status-group__count">{typeCards.length}</span></div><div className="operations-knowledge-group__actions"><button className="icon-btn" type="button" title="新增资料" aria-label={`在${type.title}中新增资料`} onClick={() => newKnowledge(type.id)}><Icon name="plus" size={13} /></button><button className="icon-btn" type="button" title="编辑类型" aria-label={`编辑${type.title}`} onClick={() => setKnowledgeTypeDraft({ ...type })}><Icon name="edit" size={13} /></button><button className="icon-btn" type="button" title="删除类型" aria-label={`删除${type.title}`} onClick={() => deleteKnowledgeType(type.id)} disabled={knowledgeTypes.length <= 1}><Icon name="trash" size={13} /></button></div></div>
           <div className="status-group__body-shell"><div className="status-group__body operations-knowledge-group__body">
-            {typeCards.length ? typeCards.map((item) => <div className="req-card-wrap operations-knowledge-card-wrap" key={item.id}><article className="req-card operations-knowledge-req-card" onClick={() => setKnowledgeDraft({ ...item })} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setKnowledgeDraft({ ...item }) } }}><div className="req-card__top"><span className="req-card__ver">资料</span><span className="pri pri--p1">{item.resourceType || '教程'}</span></div><div className="req-card__name">{item.title}</div>{item.description && <div className="req-card__content">{item.description}</div>}{item.resourceType === '账号' && item.account && <div className="operations-knowledge-account"><span>账号：{item.account}</span>{item.password && <span>密码：{visibleAccountPasswordId === item.id ? item.password : '••••••••'}</span>}</div>}{item.url ? <a className="operations-knowledge-link" href={item.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}><Icon name="link" size={12} /> 一键打开资料链接</a> : <span className="operations-knowledge-link operations-knowledge-link--empty">未添加资料链接</span>}{item.resourceType === '账号' && item.password && <button type="button" className="operations-knowledge-password-toggle" onClick={(event) => { event.stopPropagation(); setVisibleAccountPasswordId((current) => current === item.id ? null : item.id) }}><Icon name="eye" size={12} /> {visibleAccountPasswordId === item.id ? '隐藏密码' : '查看密码'}</button>}</article><div className="req-card__bottom-actions operations-knowledge-card-actions" onClick={(event) => event.stopPropagation()}><button className="req-card__add" type="button" onClick={() => setKnowledgeDraft({ ...item })} title="编辑资料"><Icon name="edit" size={13} /> 编辑</button><button className="req-card__delete" type="button" onClick={() => setState((current) => ({ ...current, tutorialCards: current.tutorialCards.filter((card) => card.id !== item.id) }))} title="删除资料"><span className="icon-circle"><Icon name="trash" size={13} /></span></button></div></div>) : <div className="status-group__empty">暂无资料卡片</div>}
+            {typeCards.length ? typeCards.map((item) => {
+              const passwordVisible = visibleAccountPasswordId === item.id
+              return (
+                <div className="req-card-wrap operations-knowledge-card-wrap" key={item.id}>
+                  <article
+                    className="req-card operations-knowledge-req-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setKnowledgeDraft({ ...item })}
+                    onKeyDown={(event) => {
+                      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault()
+                        setKnowledgeDraft({ ...item })
+                      }
+                    }}
+                  >
+                    <div className="req-card__top">
+                      <span className="req-card__ver">资料</span>
+                      <span className="pri pri--p1">{item.resourceType || '教程'}</span>
+                    </div>
+                    <div className="req-card__name">{item.title}</div>
+                    {item.description && <div className="req-card__content">{item.description}</div>}
+                    {item.resourceType === '账号' && (item.account || item.password) && (
+                      <div className="operations-knowledge-account">
+                        {item.account && <span>账号：{item.account}</span>}
+                        {item.password && (
+                          <div className="operations-knowledge-password">
+                            <span>密码：{passwordVisible ? item.password : '••••••••'}</span>
+                            <button
+                              type="button"
+                              className="operations-knowledge-password-toggle"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setVisibleAccountPasswordId((current) => current === item.id ? null : item.id)
+                              }}
+                            >
+                              <Icon name="eye" size={12} /> {passwordVisible ? '隐藏密码' : '查看密码'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {item.url ? (
+                      <a className="operations-knowledge-link" href={item.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+                        <Icon name="link" size={12} /> 一键打开资料链接
+                      </a>
+                    ) : <span className="operations-knowledge-link operations-knowledge-link--empty">未添加资料链接</span>}
+                  </article>
+                  <div className="req-card__bottom-actions operations-knowledge-card-actions" onClick={(event) => event.stopPropagation()}>
+                    <button className="req-card__add" type="button" onClick={() => setKnowledgeDraft({ ...item })} title="编辑资料"><Icon name="edit" size={13} /> 编辑</button>
+                    <button className="req-card__delete" type="button" onClick={() => setState((current) => ({ ...current, tutorialCards: current.tutorialCards.filter((card) => card.id !== item.id) }))} title="删除资料"><span className="icon-circle"><Icon name="trash" size={13} /></span></button>
+                  </div>
+                </div>
+              )
+            }) : <div className="status-group__empty">暂无资料卡片</div>}
           </div></div>
         </section> })}
       </div></div>
