@@ -1,0 +1,248 @@
+/* Map business layouts and native fields to the same tokens as Astryx controls. */
+:root[data-astryx-theme] {
+  --bg: var(--color-background-body);
+  --surface: var(--color-background-card);
+  --surface-2: var(--color-background-surface);
+  --surface-sunken: var(--color-background-muted);
+  --border: var(--color-border);
+  --text: var(--color-text-primary);
+  --text-2: var(--color-text-secondary);
+  --text-3: var(--color-text-secondary);
+  --primary: var(--color-accent);
+  --primary-hover: var(--color-text-accent);
+  --primary-dark: var(--color-accent);
+  --primary-dark-hover: var(--color-text-accent);
+  --primary-soft: var(--color-accent-muted);
+  --primary-ring: var(--color-accent-muted);
+  --success: var(--color-text-success);
+  --success-soft: var(--color-background-green);
+  --warning: var(--color-text-warning);
+  --warning-soft: var(--color-background-yellow);
+  --danger: var(--color-text-error);
+  --danger-soft: var(--color-background-red);
+  --shadow-color: var(--color-shadow);
+  --glass-bg: var(--color-background-card);
+  --glass-bg-strong: var(--color-background-surface);
+  --glass-border: var(--color-border);
+  --glass-shadow: none;
+  --glass-inset: none;
+  --card-blue-soft: var(--color-background-blue);
+  --card-teal-soft: var(--color-background-teal);
+  --card-amber-soft: var(--color-background-yellow);
+  --font-sans: var(--font-family-body);
+  --font-serif: var(--font-family-heading);
+  --font-mono: var(--font-family-code);
+  --r-nav: var(--radius-container);
+  --r-container: var(--radius-container);
+  --r-card: var(--radius-container);
+  --r-item: var(--radius-element);
+  --r-btn: var(--radius-element);
+}
+
+html[data-astryx-theme] body {
+  background: var(--color-background-body);
+  color: var(--color-text-primary);
+  font: var(--text-body-size)/var(--text-body-leading) var(--font-family-body);
+}
+
+.workspace-frame {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-frame > .main {
+  flex: 1;
+  min-height: 0;
+  padding: var(--spacing-4);
+}
+
+.app-topbar {
+  position: relative;
+  z-index: 40;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  gap: var(--spacing-3);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-background-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-topbar__start, .app-topbar__end { display: flex; align-items: center; gap: var(--spacing-2); }
+.app-topbar__end { grid-column: 3; justify-content: end; }
+.app-topbar__tabs { min-width: 0; }
+.app-topbar__tabs > nav { width: fit-content; max-width: 100%; margin-inline: auto; }
+.app-topbar__control { position: relative; }
+.app-topbar__count { position: absolute; inset: calc(-1 * var(--spacing-1)) calc(-1 * var(--spacing-1)) auto auto; pointer-events: none; }
+.app-topbar__floating { position: absolute; inset: calc(100% + var(--spacing-2)) 0 auto auto; z-index: 1; }
+.app-topbar__floating[hidden] { display: none; }
+.app-topbar__search { width: min(320px, calc(100vw - 2 * var(--spacing-4))); }
+.app-reminder-drawer { padding-block-start: var(--spacing-2); }
+.app-topbar__reminder-list { display: grid; gap: var(--spacing-2); padding-block-start: var(--spacing-3); }
+.app-topbar__reminder-row { display: flex; gap: var(--spacing-2); align-items: flex-start; justify-content: space-between; overflow-wrap: anywhere; }
+.app-topbar__reminder-row button { flex-shrink: 0; }
+
+.app-home { flex: 1; min-height: 0; overflow: auto; padding: var(--spacing-4); }
+.app-home__surface { max-width: 1200px; margin-inline: auto; border: 1px solid var(--color-border); border-radius: var(--radius-container); background: var(--color-background-surface); overflow: clip; }
+.app-home__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: var(--spacing-3); }
+.app-home__grid > * { min-width: 0; overflow-wrap: anywhere; }
+.app-home__empty { padding-block: var(--spacing-8); }
+.app-login { flex: 1; min-height: 0; display: grid; align-content: center; justify-items: center; padding: var(--spacing-4); }
+.app-login > div { width: min(100%, 400px); }
+.app-dialog-form { display: grid; gap: var(--spacing-4); }
+.app-date-range-field { display: grid; min-width: 0; gap: var(--spacing-2); justify-items: start; }
+.project-status-modal__fields { display: grid; gap: var(--spacing-4); }
+.project-status-modal__fields > div { min-width: 0; }
+.project-status-modal__status-scroll { overflow-x: auto; }
+.project-status-modal__status-scroll > .astryx-segmented-control { min-width: 600px; }
+.task-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--spacing-3);
+  margin-block-start: var(--spacing-4);
+}
+@media (max-width: 500px) {
+  .task-schedule-row { grid-template-columns: minmax(0, 1fr); }
+}
+.app-loading { flex: 1; min-height: 0; display: grid; place-items: center; }
+
+.content:not(.content--knowledge), .project-manager-board, .collection-board, .meeting-workspace {
+  border-color: var(--color-border);
+  border-radius: var(--radius-container);
+  background: var(--color-background-surface);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.req-pool-toolbar, .collection-board-toolbar, .project-manager__head, .operations-section-head {
+  gap: var(--spacing-3);
+  border-color: var(--color-border);
+  background: var(--color-background-surface);
+}
+
+.status-group, .collection-group {
+  background: var(--color-background-muted);
+  border-color: var(--color-border);
+  border-radius: var(--radius-container);
+  box-shadow: none;
+}
+
+.status-group__head { background: none; border-bottom: 1px solid var(--color-border); }
+.status-group__name { color: var(--color-text-primary); }
+.status-group__count { background: var(--color-background-gray); color: var(--color-text-secondary); }
+
+html[data-astryx-theme] :is(.status-group .req-card, .req-card, .comp-card, .meeting-card, .collection-card,
+  .operations-product-row, .operations-data-card, .summary-list__item, .project-archive__item,
+  .file-attachment-item, .retro-card, .track-card, .track-related-item, .prd-text, .prd-textarea,
+  .prd-table-wrap, .rich-editor--editable, .attachment-item) {
+  background: var(--color-background-card);
+  border-color: var(--color-border);
+  border-radius: var(--radius-container);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-astryx-theme] .status-group .req-card::before,
+html[data-astryx-theme] .status-group .req-card:not(.astryx-clickable-card)::after { content: none; }
+html[data-astryx-theme] :is(.status-group .req-card:hover, .req-card:hover, .comp-card:hover, .meeting-card:hover, .collection-card:hover, .operations-product-row:hover) {
+  background: var(--color-background-card);
+  border-color: var(--color-border-emphasized);
+  box-shadow: var(--shadow-low);
+}
+
+html[data-astryx-theme] :is(.req-card, .comp-card, .meeting-card, .collection-card, .operations-product-row, .operations-data-card).astryx-clickable-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.req-pool-page .req-pool-toolbar, .collection-board-toolbar, .project-manager__head {
+  min-height: 52px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.req-pool-page .status-groups, .project-task-groups, .collection-board-scroll:has(.collection-column) { gap: var(--spacing-4); }
+.req-pool-shell .status-group, .project-task-groups .status-group, .collection-board-scroll .collection-column {
+  flex: 0 0 300px;
+  min-width: 0;
+  width: 300px;
+}
+
+@media (max-width: 599px) {
+  .req-pool-shell .status-groups, .project-task-groups, .collection-board-scroll:has(.collection-column) {
+    overflow-x: hidden;
+    overflow-y: auto;
+    flex-direction: column;
+  }
+  .req-pool-shell .status-group, .project-task-groups .status-group, .collection-board-scroll .collection-column {
+    flex: none;
+    width: 100%;
+    height: auto;
+  }
+  .req-pool-shell .status-group__body, .project-task-groups .status-group__body, .collection-board-scroll .collection-column__body {
+    height: auto;
+    max-height: min(54dvh, 460px);
+    overflow-y: auto;
+  }
+}
+
+html[data-astryx-theme] :is(.status-group--research, .progress__node--research) { --status-accent: var(--color-text-purple); --status-soft: var(--color-background-purple); --progress-soft: var(--color-background-purple); }
+html[data-astryx-theme] :is(.status-group--reviewed, .progress__node--reviewed) { --status-accent: var(--color-text-blue); --status-soft: var(--color-background-blue); --progress-soft: var(--color-background-blue); }
+html[data-astryx-theme] :is(.status-group--development, .progress__node--development) { --status-accent: var(--color-text-teal); --status-soft: var(--color-background-teal); --progress-soft: var(--color-background-teal); }
+html[data-astryx-theme] :is(.status-group--testing, .progress__node--testing) { --status-accent: var(--color-text-warning); --status-soft: var(--color-background-yellow); --progress-soft: var(--color-background-yellow); }
+html[data-astryx-theme] :is(.status-group--live, .progress__node--live) { --status-accent: var(--color-text-success); --status-soft: var(--color-background-green); --progress-soft: var(--color-background-green); }
+
+html[data-astryx-theme] :is(.modal, .attachment-preview, .project-children-popover, .date-picker__popover, .date-range-picker__popover) {
+  background: var(--color-background-popover);
+  border-color: var(--color-border);
+  border-radius: var(--radius-container);
+  box-shadow: var(--shadow-high);
+}
+
+html[data-astryx-theme] :is(.overlay, .attachment-preview-overlay, .requirement-prd-overlay) {
+  background: var(--color-overlay);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-astryx-theme] :is(input.text-input, select.text-input, textarea.text-area) {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
+  color: var(--color-text-primary);
+  box-shadow: none;
+}
+
+html[data-astryx-theme] :is(input.text-input, select.text-input, textarea.text-area):focus-visible {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent-muted);
+  outline-offset: 1px;
+}
+
+html[data-astryx-theme] :is(.text-input, .text-area)::placeholder { color: var(--color-text-secondary); }
+html[data-astryx-theme] .btn-primary { background: var(--color-accent); color: var(--color-on-accent); box-shadow: none; border-radius: var(--radius-element); }
+html[data-astryx-theme] .btn-primary--danger { background: var(--color-background-red); color: var(--color-text-error); }
+
+@media (max-width: 599px) {
+  .workspace-frame > .main, .app-home { padding: var(--spacing-2); }
+  .app-topbar { padding: var(--spacing-2); gap: var(--spacing-1); }
+  .app-topbar--workspace .app-topbar__tabs { grid-area: 2 / 1 / 3 / -1; }
+  .app-topbar--workspace .app-topbar__end { grid-area: 1 / 3; }
+}
+
+.astryx-todos { padding: 0; }
+.astryx-todos__section { display: grid; gap: var(--spacing-3); }
+.astryx-todos__card { min-width: 0; overflow-wrap: anywhere; }
+.todo-details { display: grid; gap: var(--spacing-3); }
+.todo-details dt { color: var(--color-text-secondary); }
+.todo-details dd { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+html[data-astryx-theme] .app-dialog-surface { background: transparent; border: 0; box-shadow: none; }
+.app-dialog-surface > .modal { max-width: calc(100vw - 2 * var(--spacing-4)); margin: 0; }

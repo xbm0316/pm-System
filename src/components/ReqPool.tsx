@@ -1,3 +1,14 @@
+import { Banner } from '@astryxdesign/core/Banner'
+import { Heading } from '@astryxdesign/core/Text'
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import AttachmentPicker from './AttachmentPicker'
+import { ClickableCard } from '@astryxdesign/core/ClickableCard'
+import BoardLaneHeading from './BoardLaneHeading'
+import { WorkspaceOverlay } from './WorkspaceDialog'
+import { Card } from '@astryxdesign/core/Card'
+import { Button } from '@astryxdesign/core/Button'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { TextArea } from '@astryxdesign/core/TextArea'
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
@@ -28,7 +39,7 @@ interface Props {
 }
 
 interface MiniScrollbarProps {
-  viewportRef: RefObject<HTMLDivElement>
+  viewportRef: RefObject<HTMLDivElement | null>
   orientation: 'vertical' | 'horizontal'
 }
 
@@ -137,10 +148,9 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
   const bodyRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className={`status-group status-group--${status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'}`}>
+    <Card padding={0} variant="muted" className={`status-group status-group--${status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'}`}>
       <div className="status-group__head">
-        <span className="status-group__name">{status}</span>
-        <span className="status-group__count">{items.length}</span>
+        <BoardLaneHeading name={status} count={items.length} variant={status === '调研中' ? 'neutral' : status === '测试中' ? 'warning' : status === '已上线' ? 'success' : 'accent'} />
       </div>
       <div className="status-group__body-shell">
         <div className="status-group__body" ref={bodyRef}>
@@ -148,19 +158,9 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
             <div className="status-group__empty">暂无需求</div>
           ) : items.map((r) => (
             <div className="req-card-wrap" key={r.id}>
-              <div
+              <ClickableCard label={`${r.name}，查看需求追踪`} padding={0}
                 className={`req-card${activeReqId === r.id ? ' req-card--selected' : ''}`}
                 onClick={() => onOpenTrack(r.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onOpenTrack(r.id)
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                aria-pressed={activeReqId === r.id}
-                aria-label={`${r.name}，查看需求追踪`}
               >
                 <div className="req-card__top">
                   <span className="req-card__ver">{r.version}</span>
@@ -168,7 +168,7 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
                 </div>
                 <div className="req-card__name">{r.name}</div>
                 {r.content && <div className="req-card__content">{r.content}</div>}
-              </div>
+              </ClickableCard>
               <div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}>
                 <button type="button" className="req-card__add" onClick={() => onAddChild(r.version)} title={`基于 ${r.version} 新增需求`} aria-label={`基于 ${r.version} 新增需求`}>
                   <Icon name="plus" size={14} />
@@ -182,7 +182,7 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
         </div>
         <MiniScrollbar viewportRef={bodyRef} orientation="vertical" />
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -278,9 +278,8 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     setDraftId(uid())
   }
 
-  async function addAttachments(files: FileList | null) {
-    if (!files) return
-    const incoming = Array.from(files)
+  async function addAttachments(files: File[]) {
+    const incoming = files
     const valid = incoming.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
     if (valid.length !== incoming.length) setAttachmentError('空文件或超过 15 MB 的文件未添加')
     if (attachments.length + valid.length > 20) return setAttachmentError('需求最多保留 20 个附件')
@@ -310,7 +309,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
 
   return (
     <div className="req-pool-page">
-      <div className="req-pool-toolbar"><div className="req-pool-toolbar__title">需求池</div><button type="button" className="btn-primary" onClick={() => openCreate()}><Icon name="plus" size={14} /> 新增需求</button></div>
+      <div className="req-pool-toolbar"><div className="req-pool-toolbar__title">需求池</div><Button label="新增需求" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => openCreate()} /></div>
       <div className="status-groups-shell req-pool-shell">
         <div className="status-groups" ref={groupsRef}>
           {REQ_STATUSES.map((st) => (
@@ -329,57 +328,31 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
       </div>
 
       {showForm && (
-        <div className="overlay" onClick={closeForm}>
-          <div className="modal modal--wide project-task-create-modal requirement-create-modal" onClick={(e) => e.stopPropagation()}>
+        <WorkspaceOverlay label="新增需求" onClose={closeForm}>
+          <div className="modal modal--wide project-task-create-modal requirement-create-modal">
             <div className="project-task-create-modal__content">
-            <div className="modal__title">新增需求</div>
+            <Heading level={3} accessibilityLevel={2} className="modal__title">新增需求</Heading>
 
             <div className="form-row requirement-form-meta-row">
               <div className="requirement-form-version">
                 <div className="field-label">需求版本</div>
-                <input
-                  className="text-input"
-                  value={version}
-                  onChange={(e) => setVersion(e.target.value)}
-                />
+                <TextInput label="需求版本" isLabelHidden width="100%" value={version} onChange={setVersion} />
               </div>
               <div className="requirement-form-priority">
                 <div className="field-label">优先级</div>
-                <div className="chip-row">
-                  {PRIORITIES.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      className={`chip${priority === p ? ' chip--on' : ''}`}
-                      onClick={() => setPriority(p)}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl label="优先级" size="sm" value={priority} onChange={(value) => setPriority(value as Priority)}>
+                      {PRIORITIES.map((priority) => <SegmentedControlItem key={priority} value={priority} label={priority} />)}
+                    </SegmentedControl>
               </div>
             </div>
 
             <div className="field-label collection-field-gap">需求名称</div>
-            <input
-              className="text-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
-              placeholder="一句话说清要做什么"
-              autoFocus
-            />
+            <TextInput label="需求名称" isLabelHidden width="100%" value={name} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }} placeholder="一句话说清要做什么" hasAutoFocus onChange={setName} />
 
             <div className="field-label" style={{ marginTop: 16 }}>
               需求内容
             </div>
-            <textarea
-              className="text-area"
-              rows={4}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="背景、目标、验收标准…"
-            />
+            <TextArea label="需求内容" isLabelHidden width="100%" rows={4} value={content} placeholder="背景、目标、验收标准…" onChange={setContent} />
 
             <div className="requirement-create-inline-fields">
               <div><div className="field-label" style={{ marginTop: 16 }}>预计上线时间</div><DatePicker value={launchDate.slice(0, 10)} onChange={setLaunchDate} label="预计上线日期" /></div>
@@ -388,52 +361,30 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
 
             <div className="attachment-field">
               <div className="field-label">关联资料</div>
-              <label className="attachment-picker">
-                <input
-                  type="file"
-                  multiple
-                  onChange={(e) => {
-                    addAttachments(e.target.files)
-                    e.currentTarget.value = ''
-                  }}
-                />
-                <span className="attachment-picker__icon">+</span>
-                <span>
-                  <strong>添加关联资料</strong>
-                  <small>支持同时选择多个关联资料，当前仅本地预览</small>
-                </span>
-              </label>
+              <AttachmentPicker label="添加关联资料" onFiles={(files) => void addAttachments(files)} />
               {attachments.length > 0 && <FileAttachmentList files={attachments} onDelete={(attachment) => removeAttachment(attachment.id)} />}
-              {attachmentError && <div className="form-error" role="alert">{attachmentError}</div>}
+              {attachmentError && <Banner status="error" title={<>{attachmentError}</>} />}
             </div>
 
             </div>
             <div className="modal__actions">
-              <button className="btn-ghost" onClick={closeForm}>
-                取消
-              </button>
-              <button
-                className="btn-primary"
-                onClick={submit}
-                style={{ opacity: name.trim() ? 1 : 0.45 }}
-              >
-                创建
-              </button>
+              <Button label="取消" variant="ghost" onClick={closeForm} />
+              <Button label="创建" variant="primary" onClick={submit} style={{ opacity: name.trim() ? 1 : 0.45 }} />
             </div>
           </div>
-        </div>
+        </WorkspaceOverlay>
       )}
       {deleteTarget && (
-        <div className="overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="modal delete-confirm-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="modal__title">确认删除需求？</div>
+        <WorkspaceOverlay label="确认删除需求？" onClose={() => setDeleteTarget(null)}>
+          <div className="modal delete-confirm-modal">
+            <Heading level={3} accessibilityLevel={2} className="modal__title">确认删除需求？</Heading>
             <div className="delete-confirm-modal__text">删除「{deleteTarget.name}」后，对应的需求追踪、PRD 和复盘记录也会一并移除。</div>
             <div className="modal__actions">
-              <button className="btn-ghost" type="button" onClick={() => setDeleteTarget(null)}>取消</button>
-              <button className="btn-primary btn-primary--danger" type="button" onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null) }}>确认删除</button>
+              <Button label="取消" variant="ghost" type="button" onClick={() => setDeleteTarget(null)} />
+              <Button label="确认删除" variant="destructive" type="button" onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null) }} />
             </div>
           </div>
-        </div>
+        </WorkspaceOverlay>
       )}
     </div>
   )

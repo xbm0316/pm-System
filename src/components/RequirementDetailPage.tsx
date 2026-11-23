@@ -1,3 +1,12 @@
+import { Banner } from '@astryxdesign/core/Banner'
+import { Heading } from '@astryxdesign/core/Text'
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import AttachmentPicker from './AttachmentPicker'
+import { WorkspaceOverlay } from './WorkspaceDialog'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { TextArea } from '@astryxdesign/core/TextArea'
+import { Button } from '@astryxdesign/core/Button'
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import ReqTrack from './ReqTrack'
@@ -51,8 +60,7 @@ export default function RequirementDetailPage({ requirement, requirements, compe
     setEditingRequirement(false)
   }
 
-  async function addEditAttachments(files: FileList | null) {
-    if (!files) return
+  async function addEditAttachments(files: File[]) {
     const incoming = Array.from(files)
     const valid = incoming.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
     if (valid.length !== incoming.length) setEditAttachmentError('空文件或超过 15 MB 的文件未添加')
@@ -91,16 +99,14 @@ export default function RequirementDetailPage({ requirement, requirements, compe
     <div className="requirement-detail-page">
       <header className="requirement-detail-page__head">
         <div className="requirement-detail-page__head-main">
-          <button className="icon-btn requirement-detail-page__back" type="button" onClick={onClose} title="返回需求池" aria-label="返回需求池">
-            <Icon name="arrowLeft" size={16} />
-          </button>
+          <IconButton label="返回需求池" variant="ghost" size="sm" icon={<Icon name="arrowLeft" size={16} />} type="button" onClick={onClose} className="requirement-detail-page__back" />
         <div className="requirement-detail-page__identity">
             <div className="requirement-detail-page__eyebrow">需求详情</div>
             <div className="requirement-detail-page__meta-row"><span className="requirement-detail-page__version">{requirement.version}</span><span className={`pri pri--${requirement.priority.toLowerCase()}`}>{requirement.priority}</span></div>
             <h1><span className="requirement-detail-page__name">{requirement.name}</span></h1>
           </div>
         </div>
-        <button type="button" className="icon-btn requirement-detail-page__edit-button" onClick={openRequirementEditor} title="编辑需求" aria-label="编辑需求"><Icon name="edit" size={15} /></button>
+        <IconButton label="编辑需求" variant="ghost" size="sm" icon={<Icon name="edit" size={15} />} type="button" onClick={openRequirementEditor} className="requirement-detail-page__edit-button" />
       </header>
 
       <main className="requirement-detail-page__body" ref={bodyRef}>
@@ -113,7 +119,9 @@ export default function RequirementDetailPage({ requirement, requirements, compe
           onUpdateAttachments={onUpdateAttachments}
         />
       </main>
-      {editingRequirement && <div className="overlay requirement-edit-overlay" onClick={closeRequirementEditor}><form className="modal modal--wide project-task-create-modal requirement-edit-modal" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); saveRequirementEdit() }}><div className="project-task-create-modal__content"><div className="modal__title">编辑需求</div><div className="form-row requirement-form-meta-row"><div className="requirement-form-version"><div className="field-label">需求版本</div><input className="text-input" value={draft.version} onChange={(event) => updateDraft({ version: event.target.value })} /></div><div className="requirement-form-priority"><div className="field-label">优先级</div><div className="chip-row">{(['P0', 'P1', 'P2', 'P3'] as const).map((priority) => <button type="button" className={`chip${draft.priority === priority ? ' chip--on' : ''}`} key={priority} onClick={() => updateDraft({ priority })}>{priority}</button>)}</div></div></div><div className="field-label collection-field-gap">需求名称 <span className="field-required">*</span></div><input className="text-input" value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} autoFocus required /><div className="field-label collection-field-gap">需求内容</div><textarea className="text-area" rows={5} value={draft.content} onChange={(event) => updateDraft({ content: event.target.value })} /><div className="requirement-edit-inline-fields"><div><div className="field-label">预计上线时间</div><DatePicker value={draft.launchDate.slice(0, 10)} onChange={(value) => updateDraft({ launchDate: value })} label="预计上线日期" /></div><div><div className="field-label">关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === requirement.spaceId)} value={draft.competitorIds || []} onChange={(value) => updateDraft({ competitorIds: value })} /></div></div><div className="field-label collection-field-gap">关联资料</div><label className="attachment-picker"><input type="file" multiple onChange={(event) => { void addEditAttachments(event.target.files); event.currentTarget.value = '' }} /><span className="attachment-picker__icon">+</span><span><strong>添加关联资料</strong><small>支持同时选择多个关联资料</small></span></label>{draftAttachments.length > 0 && <FileAttachmentList files={draftAttachments} onDelete={(attachment) => removeEditAttachment(attachment as RequirementAttachment)} />}{editAttachmentError && <div className="form-error">{editAttachmentError}</div>}</div><div className="modal__actions"><button type="button" className="btn-ghost" onClick={closeRequirementEditor}>取消</button><button type="submit" className="btn-primary" disabled={!draft.name.trim()}>保存</button></div></form></div>}
+      {editingRequirement && <WorkspaceOverlay label="编辑需求" onClose={closeRequirementEditor}><form className="modal modal--wide project-task-create-modal requirement-edit-modal" onSubmit={(event) => { event.preventDefault(); saveRequirementEdit() }}><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">编辑需求</Heading><div className="form-row requirement-form-meta-row"><div className="requirement-form-version"><div className="field-label">需求版本</div><TextInput label="需求版本" isLabelHidden width="100%" value={draft.version} onChange={(nextValue) => updateDraft({ version: nextValue })} /></div><div className="requirement-form-priority"><div className="field-label">优先级</div><SegmentedControl label="优先级" size="sm" value={draft.priority} onChange={(priority) => updateDraft({ priority: priority as Requirement['priority'] })}>
+                      {['P0', 'P1', 'P2', 'P3'].map((priority) => <SegmentedControlItem key={priority} value={priority} label={priority} />)}
+                    </SegmentedControl></div></div><div className="field-label collection-field-gap">需求名称 <span className="field-required">*</span></div><TextInput label="需求名称" value={draft.name} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => updateDraft({ name: nextValue })} /><div className="field-label collection-field-gap">需求内容</div><TextArea label="需求内容" isLabelHidden width="100%" rows={5} value={draft.content} onChange={(nextValue) => updateDraft({ content: nextValue })} /><div className="requirement-edit-inline-fields"><div><div className="field-label">预计上线时间</div><DatePicker value={draft.launchDate.slice(0, 10)} onChange={(value) => updateDraft({ launchDate: value })} label="预计上线日期" /></div><div><div className="field-label">关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === requirement.spaceId)} value={draft.competitorIds || []} onChange={(value) => updateDraft({ competitorIds: value })} /></div></div><div className="field-label collection-field-gap">关联资料</div><AttachmentPicker label="添加关联资料" onFiles={(files) => void addEditAttachments(files)} />{draftAttachments.length > 0 && <FileAttachmentList files={draftAttachments} onDelete={(attachment) => removeEditAttachment(attachment as RequirementAttachment)} />}{editAttachmentError && <Banner status="error" title={<>{editAttachmentError}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={closeRequirementEditor} /><Button label="保存" variant="primary" type="submit" isDisabled={!draft.name.trim()} /></div></form></WorkspaceOverlay>}
     </div>
   )
 }

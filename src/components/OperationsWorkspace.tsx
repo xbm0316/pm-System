@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Heading } from '@astryxdesign/core/Text'
+import { NumberInput } from '@astryxdesign/core/NumberInput'
+import DatePicker from './DatePicker'
+import AttachmentPicker from './AttachmentPicker'
+import { Tab, TabList } from '@astryxdesign/core/TabList'
+import { WorkspaceOverlay } from './WorkspaceDialog'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { ClickableCard } from '@astryxdesign/core/ClickableCard'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { TextArea } from '@astryxdesign/core/TextArea'
+import { Button } from '@astryxdesign/core/Button'
+import { Selector } from '@astryxdesign/core/Selector'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import Icon from './Icon'
+import OperationsKnowledgeBoard, { type TutorialCard, type TutorialType } from './OperationsKnowledgeBoard'
 import { MENUS, uid } from '../lib/store'
 import { deleteLocalFile, getLocalFile, localFileUrl, uploadLocalFile, type LocalAttachment } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 
 interface OperationsWorkspaceProps { spaceId: string; ownerPhone: string; activeMenu: string; searchQuery?: string }
-type LearningStatus = '未开始' | '学习中' | '已完成' | '待复习'
 type ProductConclusion = '继续研究' | '进入测试' | '准备上架' | '作为备选' | '暂停'
 type CampaignStatus = '准备中' | '测试中' | '放量中' | '暂停'
 type ReviewDecision = '继续' | '调整' | '暂停'
-type ResourceType = '账号' | '教程'
-interface TutorialType { id: string; title: string; description: string; color: string }
-interface TutorialCard { id: string; typeId: string; title: string; description: string; url: string; source: string; resourceType?: ResourceType; account?: string; password?: string; goal: string; steps: string; outputs: string; status: LearningStatus; notes: string; attachments: string[]; nextAction: string; reviewDate: string; createdAt?: number; updatedAt: number }
 interface OpsProduct { id: string; name: string; description?: string; sku?: string; inventory?: number; image: string; images?: string[]; imageFileIds?: string[]; imagePaths?: string[]; supplier: string; cost: number; price: number; shipping: number; paymentFee: number; adCost: number; refundReserve: number; evidence: string; competition: string; fulfillment: string; materials: string; conclusion: ProductConclusion; attachments: string[]; createdAt: number }
 interface OpsCampaign { id: string; name: string; platform: string; productId: string; landingPage: string; dailyBudget: number; totalBudget: number; spend: number; orders: number; revenue: number; status: CampaignStatus; notes: string; createdAt: number }
 interface OpsReview { id: string; title: string; date: string; scope: string; completed: string; problems: string; insight: string; decision: ReviewDecision; nextAction: string; attachments: LocalAttachment[]; createdAt: number }
@@ -61,15 +70,16 @@ function initialCards(): TutorialCard[] { const now = Date.now(); return tutoria
 function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
 function readState(ownerPhone: string, spaceId: string): OperationsState { try { const raw = localStorage.getItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`); if (!raw) return initialState(); const parsed = JSON.parse(raw) as Partial<OperationsState>; return { tutorialCards: Array.isArray(parsed.tutorialCards) && parsed.tutorialCards.length ? parsed.tutorialCards : initialCards(), products: Array.isArray(parsed.products) ? parsed.products.map((item) => ({ ...item, images: Array.isArray(item.images) ? item.images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) : (item.image ? [item.image] : []) })) : [], campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [], reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({ ...item, attachments: Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is LocalAttachment => Boolean(entry && typeof entry === 'object' && (entry as LocalAttachment).id)).map((entry) => ({ ...entry, url: entry.fileId ? localFileUrl(entry.fileId) : entry.url })) : [] })) : [], knowledgeTypes: Array.isArray(parsed.knowledgeTypes) && parsed.knowledgeTypes.length ? parsed.knowledgeTypes : tutorialTypes } } catch { return initialState() } }
 function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
-function OpsModal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) { return <div className="overlay" onClick={onClose}><div className={`modal operations-modal${wide ? ' operations-modal--wide' : ''}`} onClick={(event) => event.stopPropagation()}><div className="operations-modal__head"><div className="modal__title">{title}</div><button className="icon-btn" type="button" onClick={onClose} aria-label="关闭"><Icon name="close" size={16} /></button></div>{children}</div></div> }
-function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) { return <label className="operations-field"><span className="field-label">{label}{required && <span className="field-required"> *</span>}</span>{children}</label> }
-function FileNames({ spaceId, entityId, files, onChange }: { spaceId: string; entityId: string; files: LocalAttachment[]; onChange: (files: LocalAttachment[]) => void }) { const ref = useRef<HTMLInputElement>(null); const [uploading, setUploading] = useState(false); async function addFiles(selected: FileList | null) { if (!selected) return; setUploading(true); const results = await Promise.allSettled(Array.from(selected).slice(0, 20 - files.length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'ops-review', entityId, pathSegments: ['独立站运营', '复盘', entityId] }))); const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []); if (uploaded.length) onChange([...files, ...uploaded]); setUploading(false) } return <div className="operations-files"><input ref={ref} type="file" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = '' }} /><button type="button" className="btn-ghost operations-file-btn" onClick={() => ref.current?.click()} disabled={uploading}><Icon name="plus" size={13} /> {uploading ? '上传中…' : '添加附件'}</button>{files.length > 0 && <FileAttachmentList files={files} onDelete={(file) => { void deleteLocalFile(file.fileId || file.id); onChange(files.filter((item) => item.id !== file.id)) }} compact />}</div> }
+function OpsModal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) { return <WorkspaceOverlay label={title} onClose={onClose}><div className={`modal operations-modal${wide ? ' operations-modal--wide' : ''}`}><div className="operations-modal__head"><Heading level={3} accessibilityLevel={2} className="modal__title">{title}</Heading><IconButton label="关闭" variant="ghost" size="sm" icon={<Icon name="close" size={16} />} type="button" onClick={onClose} /></div>{children}</div></WorkspaceOverlay> }
+function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) {
+  return <div className="operations-field"><span className="field-label">{label}{required && <span className="field-required"> *</span>}</span>{children}</div>
+}
+function FileNames({ spaceId, entityId, files, onChange }: { spaceId: string; entityId: string; files: LocalAttachment[]; onChange: (files: LocalAttachment[]) => void }) { const [uploading, setUploading] = useState(false); async function addFiles(selected: File[]) { if (!selected) return; setUploading(true); const results = await Promise.allSettled(Array.from(selected).slice(0, 20 - files.length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'ops-review', entityId, pathSegments: ['独立站运营', '复盘', entityId] }))); const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []); if (uploaded.length) onChange([...files, ...uploaded]); setUploading(false) } return <div className="operations-files"><AttachmentPicker label="添加附件" isLoading={uploading} onFiles={(files) => void addFiles(files)} />{files.length > 0 && <FileAttachmentList files={files} onDelete={(file) => { void deleteLocalFile(file.fileId || file.id); onChange(files.filter((item) => item.id !== file.id)) }} compact />}</div> }
 function ProductImagePicker({ spaceId, productId, productName, images, fileIds, imagePaths, onChange }: { spaceId: string; productId: string; productName: string; images: string[]; fileIds: string[]; imagePaths: string[]; onChange: (images: string[], fileIds: string[], imagePaths: string[]) => void }) {
-  const ref = useRef<HTMLInputElement>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [resolvedPaths, setResolvedPaths] = useState<string[]>(imagePaths)
   useEffect(() => { let cancelled = false; void Promise.all(fileIds.map(async (id, index) => imagePaths[index] || (await getLocalFile(id).catch(() => null))?.relativePath || '')).then((paths) => { if (!cancelled) setResolvedPaths(paths) }); return () => { cancelled = true } }, [fileIds, imagePaths])
-  async function addFiles(files: FileList | null) {
+  async function addFiles(files: File[]) {
     if (!files) return
     const results = await Promise.allSettled(Array.from(files).filter((file) => file.type.startsWith('image/')).map((file) => uploadLocalFile(file, { spaceId, entityType: 'product', entityId: productId, pathSegments: ['选品', productName || productId, '商品图片'] })))
     const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
@@ -82,28 +92,23 @@ function ProductImagePicker({ spaceId, productId, productName, images, fileIds, 
   }
   useEffect(() => { if (activeIndex >= images.length) setActiveIndex(Math.max(images.length - 1, 0)) }, [activeIndex, images.length])
   return <div className="operations-image-picker">
-    <input ref={ref} type="file" accept="image/*" multiple hidden onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = '' }} />
+
     <div className="operations-image-picker__preview">
       {images[activeIndex] ? <img src={images[activeIndex]} alt={`商品主图 ${activeIndex + 1}`} /> : <div className="operations-image-picker__empty"><Icon name="image" size={30} /><strong>上传商品主图</strong><span>建议使用清晰的商品图片</span></div>}
-      {images.length > 1 && <><button className="operations-image-picker__nav operations-image-picker__nav--prev" type="button" onClick={() => setActiveIndex((activeIndex - 1 + images.length) % images.length)} aria-label="上一张"><Icon name="chevronLeft" size={16} /></button><button className="operations-image-picker__nav operations-image-picker__nav--next" type="button" onClick={() => setActiveIndex((activeIndex + 1) % images.length)} aria-label="下一张"><Icon name="chevronRight" size={16} /></button></>}
+      {images.length > 1 && <><IconButton label="上一张" icon={<Icon name="chevronLeft" size={16} />} variant="ghost" size="sm" className="operations-image-picker__nav operations-image-picker__nav--prev" type="button" onClick={() => setActiveIndex((activeIndex - 1 + images.length) % images.length)} /><IconButton label="下一张" icon={<Icon name="chevronRight" size={16} />} variant="ghost" size="sm" className="operations-image-picker__nav operations-image-picker__nav--next" type="button" onClick={() => setActiveIndex((activeIndex + 1) % images.length)} /></>}
     </div>
     <div className="operations-image-picker__footer"><div className="operations-image-picker__list">
-      {images.map((image, index) => <div className={`operations-image-picker__item${index === activeIndex ? ' is-active' : ''}`} key={`${image.slice(0, 24)}-${index}`}><button className="operations-image-picker__select" type="button" onClick={() => setActiveIndex(index)} aria-label={`查看商品图 ${index + 1}`}><img src={image} alt={`商品图 ${index + 1}`} /></button><button className="operations-image-picker__remove" type="button" onClick={() => void removeImage(index)} aria-label={`删除商品图 ${index + 1}`}><Icon name="close" size={11} /></button><small className="operations-image-picker__path">{resolvedPaths[index] || '路径暂不可用'}</small></div>)}
-      <button type="button" className="operations-image-picker__button" onClick={() => ref.current?.click()}><Icon name="plus" size={16} /><span>添加图片</span></button>
-    </div><span className="operations-image-picker__hint">首张图片将作为商品主图，支持一次选择多张图片</span><FileAttachmentList files={images.map((image, index) => ({ id: fileIds[index] || `${productId}-${index}`, fileId: fileIds[index], name: `商品图片 ${index + 1}`, url: image, kind: 'image' as const, relativePath: resolvedPaths[index] }))} compact /></div>
+      {images.map((image, index) => <div className={`operations-image-picker__item${index === activeIndex ? ' is-active' : ''}`} key={`${image.slice(0, 24)}-${index}`}><IconButton label={`查看商品图 ${index + 1}`} icon={<img src={image} alt={`商品图 ${index + 1}`} />} variant="ghost" size="sm" className="operations-image-picker__select" type="button" onClick={() => setActiveIndex(index)} /><IconButton label={`删除商品图 ${index + 1}`} icon={<Icon name="close" size={11} />} variant="ghost" size="sm" className="operations-image-picker__remove" type="button" onClick={() => void removeImage(index)} /><small className="operations-image-picker__path">{resolvedPaths[index] || '路径暂不可用'}</small></div>)}
+
+    </div><AttachmentPicker label="添加图片" accept="image/*" description="首张图片将作为商品主图。" onFiles={(files) => void addFiles(files)} /><FileAttachmentList files={images.map((image, index) => ({ id: fileIds[index] || `${productId}-${index}`, fileId: fileIds[index], name: `商品图片 ${index + 1}`, url: image, kind: 'image' as const, relativePath: resolvedPaths[index] }))} compact /></div>
   </div>
 }
 
 export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
   const [state, setState] = useState<OperationsState>(() => readState(ownerPhone, spaceId))
-  const [knowledgeDraft, setKnowledgeDraft] = useState<TutorialCard | null>(null)
   const [productDraft, setProductDraft] = useState<OpsProduct | null>(null)
   const [campaignDraft, setCampaignDraft] = useState<OpsCampaign | null>(null)
   const [reviewDraft, setReviewDraft] = useState<OpsReview | null>(null)
-  const [knowledgeTypeId, setKnowledgeTypeId] = useState('route')
-  const [knowledgeTypeDraft, setKnowledgeTypeDraft] = useState<TutorialType | null>(null)
-  const [visibleAccountPasswordId, setVisibleAccountPasswordId] = useState<string | null>(null)
-  const [knowledgePasswordVisible, setKnowledgePasswordVisible] = useState(false)
   const [productImageIndexes, setProductImageIndexes] = useState<Record<string, number>>({})
   const [productTab, setProductTab] = useState<'basic' | 'pricing'>('basic')
   const menus = MENUS['独立站电商运营']
@@ -111,120 +116,20 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
   const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
   useEffect(() => { setState(readState(ownerPhone, spaceId)) }, [ownerPhone, spaceId])
   useEffect(() => { localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(state)) }, [ownerPhone, spaceId, state])
-  const cards = useMemo(() => state.tutorialCards
-    .filter((item) => !query || `${item.title} ${item.description} ${item.notes} ${item.status}`.toLocaleLowerCase().includes(query))
-    .sort((a, b) => (b.createdAt ?? b.updatedAt) - (a.createdAt ?? a.updatedAt)), [query, state.tutorialCards])
   const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier} ${item.conclusion}`.toLocaleLowerCase().includes(query)), [query, state.products])
   const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
-  function newKnowledge(typeId = knowledgeTypeId) { setKnowledgePasswordVisible(false); setKnowledgeDraft({ id: uid(), typeId, title: '', description: '', url: '', source: '', resourceType: '教程', account: '', password: '', goal: '', steps: '', outputs: '', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', updatedAt: Date.now() }) }
-  function newKnowledgeType() { setKnowledgeTypeDraft({ id: uid(), title: '', description: '', color: ['#0951C3', '#0e9b83', '#e39a26', '#df6d5c', '#bd5bb4'][knowledgeTypes.length % 5] }) }
-  function saveKnowledgeType(event: FormEvent) { event.preventDefault(); const draft = knowledgeTypeDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, knowledgeTypes: [...(current.knowledgeTypes || tutorialTypes).filter((item) => item.id !== draft.id), { ...draft, title: draft.title.trim() }] })); setKnowledgeTypeId(draft.id); setKnowledgeTypeDraft(null) }
-  function deleteKnowledgeType(typeId: string) { if (knowledgeTypes.length <= 1) return; const nextTypes = knowledgeTypes.filter((item) => item.id !== typeId); setState((current) => ({ ...current, knowledgeTypes: nextTypes, tutorialCards: current.tutorialCards.filter((item) => item.typeId !== typeId) })); if (knowledgeTypeId === typeId) setKnowledgeTypeId(nextTypes[0].id) }
-  function saveKnowledge(event: FormEvent) {
-    event.preventDefault()
-    const draft = knowledgeDraft
-    if (!draft || !draft.title.trim()) return
-    const now = Date.now()
-    setState((current) => {
-      const existing = current.tutorialCards.find((item) => item.id === draft.id)
-      const saved: TutorialCard = {
-        ...draft,
-        title: draft.title.trim(),
-        url: draft.url.trim(),
-        account: draft.resourceType === '账号' ? draft.account?.trim() : '',
-        password: draft.resourceType === '账号' ? draft.password : '',
-        createdAt: existing?.createdAt ?? existing?.updatedAt ?? now,
-        updatedAt: now,
-      }
-      const tutorialCards = existing
-        ? current.tutorialCards.map((item) => item.id === saved.id ? saved : item)
-        : [...current.tutorialCards, saved]
-      return { ...current, tutorialCards }
-    })
-    setKnowledgeDraft(null)
-  }
   function newProduct() { setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', inventory: 0, image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', conclusion: '继续研究', attachments: [], createdAt: Date.now() }) }
-  function saveProduct(event: FormEvent) { event.preventDefault(); const draft = productDraft; if (!draft || !draft.name.trim()) return; setState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), draft] })); setProductDraft(null) }
+  function saveProduct(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const draft = productDraft; if (!draft?.name.trim() || (productTab === 'basic' && !draft.description) || event.currentTarget.querySelector('[aria-invalid="true"]')) return; setState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), draft] })); setProductDraft(null) }
   function newCampaign() { setCampaignDraft({ id: uid(), name: '', platform: 'Meta', productId: '', landingPage: '', dailyBudget: 0, totalBudget: 0, spend: 0, orders: 0, revenue: 0, status: '准备中', notes: '', createdAt: Date.now() }) }
-  function saveCampaign(event: FormEvent) { event.preventDefault(); const draft = campaignDraft; if (!draft || !draft.name.trim()) return; setState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] })); setCampaignDraft(null) }
+  function saveCampaign(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const draft = campaignDraft; if (!draft?.name.trim() || event.currentTarget.querySelector('[aria-invalid="true"]')) return; setState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] })); setCampaignDraft(null) }
   function newReview() { setReviewDraft({ id: uid(), title: '', date: new Date().toISOString().slice(0, 10), scope: '教程学习', completed: '', problems: '', insight: '', decision: '继续', nextAction: '', attachments: [], createdAt: Date.now() }) }
   function saveReview(event: FormEvent) { event.preventDefault(); const draft = reviewDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, reviews: [...current.reviews.filter((item) => item.id !== draft.id), draft] })); setReviewDraft(null) }
-  const cardType = (typeId: string) => knowledgeTypes.find((item) => item.id === typeId) || knowledgeTypes[0]
-  function renderKnowledge() {
-    return <>
-      <div className="req-pool-toolbar operations-knowledge-toolbar--pool"><div /><button className="btn-primary" type="button" onClick={newKnowledgeType}><Icon name="plus" size={14} /> 新增类型</button></div>
-      <div className="status-groups-shell req-pool-shell operations-knowledge-shell"><div className="status-groups operations-knowledge-groups">
-        {knowledgeTypes.map((type) => { const typeCards = cards.filter((item) => item.typeId === type.id); return <section className="status-group operations-knowledge-group" key={type.id} style={{ '--status-accent': type.color, '--status-soft': `${type.color}18` } as React.CSSProperties}>
-          <div className="status-group__head operations-knowledge-group__head"><div className="operations-knowledge-group__title"><span className="status-group__name">{type.title}</span><span className="status-group__count">{typeCards.length}</span></div><div className="operations-knowledge-group__actions"><button className="icon-btn" type="button" title="新增资料" aria-label={`在${type.title}中新增资料`} onClick={() => newKnowledge(type.id)}><Icon name="plus" size={13} /></button><button className="icon-btn" type="button" title="编辑类型" aria-label={`编辑${type.title}`} onClick={() => setKnowledgeTypeDraft({ ...type })}><Icon name="edit" size={13} /></button><button className="icon-btn" type="button" title="删除类型" aria-label={`删除${type.title}`} onClick={() => deleteKnowledgeType(type.id)} disabled={knowledgeTypes.length <= 1}><Icon name="trash" size={13} /></button></div></div>
-          <div className="status-group__body-shell"><div className="status-group__body operations-knowledge-group__body">
-            {typeCards.length ? typeCards.map((item) => {
-              const passwordVisible = visibleAccountPasswordId === item.id
-              return (
-                <div className="req-card-wrap operations-knowledge-card-wrap" key={item.id}>
-                  <article
-                    className="req-card operations-knowledge-req-card"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setKnowledgeDraft({ ...item })}
-                    onKeyDown={(event) => {
-                      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
-                        event.preventDefault()
-                        setKnowledgeDraft({ ...item })
-                      }
-                    }}
-                  >
-                    <div className="req-card__top">
-                      <span className="req-card__ver">资料</span>
-                      <span className="pri pri--p1">{item.resourceType || '教程'}</span>
-                    </div>
-                    <div className="req-card__name">{item.title}</div>
-                    {item.description && <div className="req-card__content">{item.description}</div>}
-                    {item.resourceType === '账号' && (item.account || item.password) && (
-                      <div className="operations-knowledge-account">
-                        {item.account && <span>账号：{item.account}</span>}
-                        {item.password && (
-                          <div className="operations-knowledge-password">
-                            <span>密码：{passwordVisible ? item.password : '••••••••'}</span>
-                            <button
-                              type="button"
-                              className="operations-knowledge-password-toggle"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setVisibleAccountPasswordId((current) => current === item.id ? null : item.id)
-                              }}
-                            >
-                              <Icon name="eye" size={12} /> {passwordVisible ? '隐藏密码' : '查看密码'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {item.url ? (
-                      <a className="operations-knowledge-link" href={item.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                        <Icon name="link" size={12} /> 一键打开资料链接
-                      </a>
-                    ) : <span className="operations-knowledge-link operations-knowledge-link--empty">未添加资料链接</span>}
-                  </article>
-                  <div className="req-card__bottom-actions operations-knowledge-card-actions" onClick={(event) => event.stopPropagation()}>
-                    <button className="req-card__add" type="button" onClick={() => setKnowledgeDraft({ ...item })} title="编辑资料"><Icon name="edit" size={13} /> 编辑</button>
-                    <button className="req-card__delete" type="button" onClick={() => setState((current) => ({ ...current, tutorialCards: current.tutorialCards.filter((card) => card.id !== item.id) }))} title="删除资料"><span className="icon-circle"><Icon name="trash" size={13} /></span></button>
-                  </div>
-                </div>
-              )
-            }) : <div className="status-group__empty">暂无资料卡片</div>}
-          </div></div>
-        </section> })}
-      </div></div>
-      {knowledgeDraft && <OpsModal title={knowledgeDraft.title ? '编辑资料' : '新增资料'} onClose={() => { setKnowledgeDraft(null); setKnowledgePasswordVisible(false) }}><form className="operations-form-grid" onSubmit={saveKnowledge}><Field label="资料名称" required><input autoFocus required className="text-input" value={knowledgeDraft.title} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, title: event.target.value })} /></Field><Field label="资料类型" required><div className="operations-resource-type-picker" role="radiogroup" aria-label="资料类型">{(['账号', '教程'] as ResourceType[]).map((resourceType) => <button key={resourceType} type="button" className={`operations-resource-type-option${(knowledgeDraft.resourceType || '教程') === resourceType ? ' is-active' : ''}`} role="radio" aria-checked={(knowledgeDraft.resourceType || '教程') === resourceType} onClick={() => { setKnowledgePasswordVisible(false); setKnowledgeDraft({ ...knowledgeDraft, resourceType }) }}>{resourceType}</button>)}</div></Field>{knowledgeDraft.resourceType === '账号' && <><Field label="账号" required><input className="text-input" required value={knowledgeDraft.account || ''} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, account: event.target.value })} placeholder="填写账号或邮箱" /></Field><Field label="密码" required><div className="operations-password-field"><input className="text-input" required type={knowledgePasswordVisible ? 'text' : 'password'} value={knowledgeDraft.password || ''} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, password: event.target.value })} placeholder="填写登录密码" /><button type="button" className="icon-btn" onClick={() => setKnowledgePasswordVisible((current) => !current)} aria-label={knowledgePasswordVisible ? '隐藏密码' : '显示密码'} title={knowledgePasswordVisible ? '隐藏密码' : '显示密码'}><Icon name="eye" size={14} /></button></div></Field></>}<Field label="链接"><input className="text-input" type="url" placeholder="https://" value={knowledgeDraft.url} onChange={(event) => setKnowledgeDraft({ ...knowledgeDraft, url: event.target.value })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => { setKnowledgeDraft(null); setKnowledgePasswordVisible(false) }}>取消</button><button className="btn-primary" type="submit">保存资料</button></div></form></OpsModal>}
-      {knowledgeTypeDraft && <OpsModal title={knowledgeTypeDraft.title ? '编辑资料类型' : '新增资料类型'} onClose={() => setKnowledgeTypeDraft(null)}><form className="operations-form-grid" onSubmit={saveKnowledgeType}><Field label="类型名称" required><input autoFocus required className="text-input" value={knowledgeTypeDraft.title} onChange={(event) => setKnowledgeTypeDraft({ ...knowledgeTypeDraft, title: event.target.value })} /></Field><Field label="类型颜色"><input className="text-input" type="color" value={knowledgeTypeDraft.color} onChange={(event) => setKnowledgeTypeDraft({ ...knowledgeTypeDraft, color: event.target.value })} /></Field><Field label="类型说明"><textarea className="text-area" rows={3} value={knowledgeTypeDraft.description} onChange={(event) => setKnowledgeTypeDraft({ ...knowledgeTypeDraft, description: event.target.value })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setKnowledgeTypeDraft(null)}>取消</button><button className="btn-primary" type="submit">保存类型</button></div></form></OpsModal>}
-    </>
-  }
   function renderProducts() {
     const labels: Record<string, string> = { price: '售价', cost: '采购成本', shipping: '物流成本', paymentFee: '支付手续费', adCost: '预计投流成本', refundReserve: '退款预留' }
     return <>
       <div className="operations-section-head">
         <div />
-        <button className="btn-primary" type="button" onClick={newProduct}><Icon name="plus" size={14} /> 添加商品</button>
+        <Button label="添加商品" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newProduct} />
       </div>
       <div className="operations-product-list">
         {products.length ? products.map((item) => {
@@ -234,26 +139,26 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
           const afterAdProfit = contribution - item.adCost
           const margin = item.price > 0 ? contribution / item.price * 100 : 0
           const breakEvenRoas = contribution > 0 ? item.price / contribution : 0
-          return <article className="operations-product-row" key={item.id}>
+          return <ClickableCard padding={0} className="operations-product-row" key={item.id} label={`查看商品 ${item.name}`} onClick={() => { setProductTab('basic'); setProductDraft({ ...item }) }}>
             <div className="operations-product-row__media">
               <div className="operations-product-media operations-product-media--row">
                 {images[imageIndex] ? <img src={images[imageIndex]} alt={item.name} /> : <div className="operations-product-placeholder"><Icon name="image" size={26} /><span>暂无商品图片</span></div>}
                 {images.length > 1 && <>
-                  <button className="operations-product-arrow operations-product-arrow--prev" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex - 1 + images.length) % images.length }))} aria-label="上一张"><Icon name="chevronLeft" size={15} /></button>
-                  <button className="operations-product-arrow operations-product-arrow--next" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex + 1) % images.length }))} aria-label="下一张"><Icon name="chevronRight" size={15} /></button>
+                  <IconButton label="上一张" icon={<Icon name="chevronLeft" size={15} />} variant="ghost" size="sm" className="operations-product-arrow operations-product-arrow--prev" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex - 1 + images.length) % images.length }))} />
+                  <IconButton label="下一张" icon={<Icon name="chevronRight" size={15} />} variant="ghost" size="sm" className="operations-product-arrow operations-product-arrow--next" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex + 1) % images.length }))} />
                   <span className="operations-product-image-count">{imageIndex + 1}/{images.length}</span>
                 </>}
               </div>
               {images.length > 1 && <div className="operations-product-thumb-strip">{images.map((image, index) => <button type="button" key={`${image}-${index}`} className={`operations-product-thumb${index === imageIndex ? ' is-active' : ''}`} onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: index }))}><img src={image} alt={`${item.name} 缩略图 ${index + 1}`} /></button>)}</div>}
             </div>
             <div className="operations-product-row__body">
-              <div className="operations-product-row__top"><span className="operations-status operations-status--准备上架">{item.conclusion}</span><div className="operations-product-row__actions"><button className="card__act" type="button" onClick={() => { setProductTab('basic'); setProductDraft({ ...item }) }} title="编辑商品"><Icon name="edit" size={13} /></button><button className="card__act card__act--close" type="button" onClick={() => setState((current) => ({ ...current, products: current.products.filter((product) => product.id !== item.id) }))} title="删除商品"><Icon name="trash" size={13} /></button></div></div>
+              <div className="operations-product-row__top"><span className="operations-status operations-status--准备上架">{item.conclusion}</span><div className="operations-product-row__actions"><IconButton label="编辑商品" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { setProductTab('basic'); setProductDraft({ ...item }) }} /><IconButton label="删除商品" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setState((current) => ({ ...current, products: current.products.filter((product) => product.id !== item.id) }))} /></div></div>
               <h2>{item.name}</h2>
               <p className="operations-product-description">{item.description || item.evidence || '暂无商品描述和选品结论'}</p>
               <div className="operations-product-meta"><span>售价 <strong>¥{money(item.price)}</strong></span><span>库存 <strong>{item.inventory ?? 0}</strong></span><span>SKU <strong>{item.sku || '未填写'}</strong></span><span>供应商 <strong>{item.supplier?.startsWith('http') ? <a className="operations-product-source-link" href={item.supplier} target="_blank" rel="noreferrer">打开商品原链接 <Icon name="link" size={11} /></a> : (item.supplier || '未填写')}</strong></span></div>
               <div className="operations-metrics"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>广告后利润<strong>¥{money(afterAdProfit)}</strong></span><span>毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div>
             </div>
-          </article>
+          </ClickableCard>
         }) : <div className="operations-empty">还没有商品，点击“添加商品”开始建立第一条选品记录。</div>}
       </div>
       {productDraft && (() => {
@@ -262,27 +167,130 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
         const breakEvenRoas = contribution > 0 ? productDraft.price / contribution : 0
         return <OpsModal title={productDraft.name ? '编辑商品' : '添加商品'} onClose={() => setProductDraft(null)} wide>
           <form className="operations-product-form" onSubmit={saveProduct}>
-            <div className="operations-product-tabs" role="tablist" aria-label="商品编辑分区"><button type="button" className={productTab === 'basic' ? 'is-active' : ''} onClick={() => setProductTab('basic')} role="tab" aria-selected={productTab === 'basic'}>商品信息</button><button type="button" className={productTab === 'pricing' ? 'is-active' : ''} onClick={() => setProductTab('pricing')} role="tab" aria-selected={productTab === 'pricing'}>定价与成本</button></div>
-            {productTab === 'basic' && <section className="operations-product-form__section"><div className="operations-product-form__title">商品信息</div><div className="operations-product-form__grid">
-              <Field label="商品标题" required><input autoFocus required className="text-input" value={productDraft.name} onChange={(e) => setProductDraft({ ...productDraft, name: e.target.value })} placeholder="例如：便携榨汁杯" /></Field>
-              <Field label="供应商 / 商品原链接"><input className="text-input" value={productDraft.supplier} onChange={(e) => setProductDraft({ ...productDraft, supplier: e.target.value })} placeholder="填写供应商名称或商品原链接" /></Field>
-              <Field label="SKU"><input className="text-input" value={productDraft.sku || ''} onChange={(e) => setProductDraft({ ...productDraft, sku: e.target.value })} placeholder="商品编码" /></Field>
-              <Field label="库存"><input className="text-input" type="number" min="0" step="1" value={productDraft.inventory ?? 0} onChange={(e) => setProductDraft({ ...productDraft, inventory: Number(e.target.value) })} /></Field>
-              <Field label="商品描述" required><textarea required className="text-area" rows={4} value={productDraft.description || ''} onChange={(e) => setProductDraft({ ...productDraft, description: e.target.value })} placeholder="商品卖点、适用人群和选品判断" /></Field>
+            <TabList value={productTab} onChange={(tab) => setProductTab(tab === 'pricing' ? 'pricing' : 'basic')} role="tablist" hasDivider>
+              <Tab value="basic" label="商品信息" panelId="ops-product-info" />
+              <Tab value="pricing" label="定价与成本" panelId="ops-product-pricing" />
+            </TabList>
+            {productTab === 'basic' && <section id="ops-product-info" role="tabpanel" aria-label="商品信息" className="operations-product-form__section"><div className="operations-product-form__title">商品信息</div><div className="operations-product-form__grid">
+              <Field label="商品标题" required><TextInput label="商品标题" value={productDraft.name} isLabelHidden width="100%" isRequired hasAutoFocus placeholder="例如：便携榨汁杯" onChange={(nextValue) => setProductDraft({ ...productDraft, name: nextValue })} /></Field>
+              <Field label="供应商 / 商品原链接"><TextInput label="供应商 / 商品原链接" isLabelHidden width="100%" value={productDraft.supplier} placeholder="填写供应商名称或商品原链接" onChange={(nextValue) => setProductDraft({ ...productDraft, supplier: nextValue })} /></Field>
+              <Field label="SKU"><TextInput label="SKU" isLabelHidden width="100%" value={productDraft.sku || ''} placeholder="商品编码" onChange={(nextValue) => setProductDraft({ ...productDraft, sku: nextValue })} /></Field>
+              <Field label="库存"><NumberInput label="库存" value={productDraft.inventory ?? 0} isLabelHidden width="100%" min={0} step={1} isIntegerOnly isWheelEnabled={false} onChange={(nextValue) => setProductDraft({ ...productDraft, inventory: nextValue })} /></Field>
+              <Field label="商品描述" required><TextArea label="商品描述" value={productDraft.description || ''} isLabelHidden width="100%" isRequired rows={4} placeholder="商品卖点、适用人群和选品判断" onChange={(nextValue) => setProductDraft({ ...productDraft, description: nextValue })} /></Field>
               <Field label="商品图片"><ProductImagePicker spaceId={spaceId} productId={productDraft.id} productName={productDraft.name} images={productDraft.images || []} fileIds={productDraft.imageFileIds || []} imagePaths={productDraft.imagePaths || []} onChange={(images, imageFileIds, imagePaths) => setProductDraft({ ...productDraft, images, imageFileIds, imagePaths, image: images[0] || '' })} /></Field>
             </div></section>}
-            {productTab === 'pricing' && <section className="operations-product-form__section"><div className="operations-product-form__title">定价与成本</div><div className="operations-product-form__grid">
-              {(['price', 'cost', 'shipping', 'paymentFee', 'adCost', 'refundReserve'] as const).map((key) => <Field key={key} label={labels[key]}><input className="text-input" type="number" min="0" step="0.01" value={productDraft[key]} onChange={(e) => setProductDraft({ ...productDraft, [key]: Number(e.target.value) })} /></Field>)}
-              <Field label="商品状态"><select className="text-input" value={productDraft.conclusion} onChange={(e) => setProductDraft({ ...productDraft, conclusion: e.target.value as ProductConclusion })}>{['继续研究', '进入测试', '准备上架', '作为备选', '暂停'].map((value) => <option key={value}>{value}</option>)}</select></Field>
+            {productTab === 'pricing' && <section id="ops-product-pricing" role="tabpanel" aria-label="定价与成本" className="operations-product-form__section"><div className="operations-product-form__title">定价与成本</div><div className="operations-product-form__grid">
+              {(['price', 'cost', 'shipping', 'paymentFee', 'adCost', 'refundReserve'] as const).map((key) => <Field key={key} label={labels[key]}><NumberInput label={labels[key]} value={productDraft[key]} isLabelHidden width="100%" min={0} step={0.01} isWheelEnabled={false} onChange={(nextValue) => setProductDraft({ ...productDraft, [key]: nextValue })} /></Field>)}
+              <Selector label="商品状态" width="100%" value={productDraft.conclusion}
+                options={['继续研究', '进入测试', '准备上架', '作为备选', '暂停']}
+                onChange={(conclusion) => setProductDraft({ ...productDraft, conclusion: conclusion as ProductConclusion })} />
             </div><div className="operations-calculator" aria-live="polite"><div className="operations-calculator__head"><strong>利润预估</strong><a href="https://ecomwith.com/zh/tools/pricing" target="_blank" rel="noreferrer">Ecomwith 定价工具 <Icon name="link" size={11} /></a></div><div className="operations-calculator__grid"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>贡献毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 CPA<strong>¥{money(Math.max(contribution, 0))}</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div><p>贡献利润 = 售价 − 采购 − 物流 − 手续费 − 退款预留；投流成本单独计算广告后利润。<a href="https://ecomwith.com/zh/tools/break-even-roas" target="_blank" rel="noreferrer">查看公式来源</a></p></div></section>}
-            <div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setProductDraft(null)}>取消</button><button className="btn-primary" type="submit">保存商品</button></div>
+            <div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" onClick={() => setProductDraft(null)} /><Button label="保存商品" variant="primary" type="submit" isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} /></div>
           </form>
         </OpsModal>
       })()}
     </>
   }
-  function renderAds() { const spend = campaigns.reduce((sum, item) => sum + item.spend, 0); const revenue = campaigns.reduce((sum, item) => sum + item.revenue, 0); const orders = campaigns.reduce((sum, item) => sum + item.orders, 0); return <><div className="operations-section-head operations-section-head--compact"><span aria-hidden="true" /><button className="btn-primary" type="button" onClick={newCampaign}><Icon name="plus" size={14} /> 新增投流计划</button></div><div className="operations-kpi-row"><div><span>广告花费</span><strong>¥{money(spend)}</strong></div><div><span>广告收入</span><strong>¥{money(revenue)}</strong></div><div><span>ROAS</span><strong>{spend ? (revenue / spend).toFixed(2) : '0.00'}</strong></div></div><div className="operations-card-grid">{campaigns.length ? campaigns.map((item) => { const roas = item.spend ? item.revenue / item.spend : 0; const cpa = item.orders ? item.spend / item.orders : 0; const product = state.products.find((entry) => entry.id === item.productId); return <article className="operations-data-card" key={item.id}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.status}</span><div><button className="card__act" type="button" onClick={() => setCampaignDraft({ ...item })} title="编辑"><Icon name="edit" size={13} /></button><button className="card__act card__act--close" type="button" onClick={() => setState((current) => ({ ...current, campaigns: current.campaigns.filter((campaign) => campaign.id !== item.id) }))} title="删除"><Icon name="trash" size={13} /></button></div></div><h2>{item.name}</h2><p className="operations-muted">{item.platform} · {product?.name || '未关联商品'}</p><div className="operations-metrics"><span>花费<strong>¥{money(item.spend)}</strong></span><span>订单<strong>{item.orders}</strong></span><span>ROAS<strong>{roas.toFixed(2)}</strong></span><span>CPA<strong>¥{money(cpa)}</strong></span></div><p className="operations-card-copy">{item.notes || '暂无投放结论'}</p></article> }) : <div className="operations-empty">还没有投流计划，选品进入测试后可以在这里建立第一条广告记录。</div>}</div>{campaignDraft && <OpsModal title={campaignDraft.name ? '编辑投流计划' : '新增投流计划'} onClose={() => setCampaignDraft(null)} wide><form className="operations-form-grid" onSubmit={saveCampaign}><Field label="计划名称" required><input autoFocus required className="text-input" value={campaignDraft.name} onChange={(e) => setCampaignDraft({ ...campaignDraft, name: e.target.value })} /></Field><Field label="投放平台"><select className="text-input" value={campaignDraft.platform} onChange={(e) => setCampaignDraft({ ...campaignDraft, platform: e.target.value })}><option>Meta</option><option>Google</option><option>TikTok</option><option>其他</option></select></Field><Field label="关联商品"><select className="text-input" value={campaignDraft.productId} onChange={(e) => setCampaignDraft({ ...campaignDraft, productId: e.target.value })}><option value="">暂不关联</option>{state.products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></Field><Field label="落地页"><input className="text-input" type="url" value={campaignDraft.landingPage} onChange={(e) => setCampaignDraft({ ...campaignDraft, landingPage: e.target.value })} /></Field><Field label="投放状态"><select className="text-input" value={campaignDraft.status} onChange={(e) => setCampaignDraft({ ...campaignDraft, status: e.target.value as CampaignStatus })}><option>准备中</option><option>测试中</option><option>放量中</option><option>暂停</option></select></Field>{(['dailyBudget', 'totalBudget', 'spend', 'orders', 'revenue'] as const).map((key) => <Field key={key} label={({ dailyBudget: '日预算', totalBudget: '总预算', spend: '已花费', orders: '订单数', revenue: '广告收入' } as Record<string, string>)[key]}><input className="text-input" type="number" min="0" step="0.01" value={campaignDraft[key]} onChange={(e) => setCampaignDraft({ ...campaignDraft, [key]: Number(e.target.value) })} /></Field>)}<Field label="投放结论"><textarea className="text-area" rows={3} value={campaignDraft.notes} onChange={(e) => setCampaignDraft({ ...campaignDraft, notes: e.target.value })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setCampaignDraft(null)}>取消</button><button className="btn-primary" type="submit">保存计划</button></div></form></OpsModal>}</> }
-  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><button className="btn-primary" type="button" onClick={newReview}><Icon name="plus" size={14} /> 新增复盘</button></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <article className="operations-data-card" key={item.id}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><button className="card__act" type="button" onClick={() => setReviewDraft({ ...item })} title="编辑"><Icon name="edit" size={13} /></button><button className="card__act card__act--close" type="button" onClick={() => setState((current) => ({ ...current, reviews: current.reviews.filter((review) => review.id !== item.id) }))} title="删除"><Icon name="trash" size={13} /></button></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></article>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={() => setReviewDraft(null)} wide><form className="operations-form-grid" onSubmit={saveReview}><Field label="复盘标题" required><input autoFocus required className="text-input" value={reviewDraft.title} onChange={(e) => setReviewDraft({ ...reviewDraft, title: e.target.value })} /></Field><Field label="日期"><input className="text-input" type="date" value={reviewDraft.date} onChange={(e) => setReviewDraft({ ...reviewDraft, date: e.target.value })} /></Field><Field label="复盘范围"><input className="text-input" value={reviewDraft.scope} onChange={(e) => setReviewDraft({ ...reviewDraft, scope: e.target.value })} /></Field><Field label="结论"><select className="text-input" value={reviewDraft.decision} onChange={(e) => setReviewDraft({ ...reviewDraft, decision: e.target.value as ReviewDecision })}><option>继续</option><option>调整</option><option>暂停</option></select></Field><Field label="完成了什么"><textarea className="text-area" rows={4} value={reviewDraft.completed} onChange={(e) => setReviewDraft({ ...reviewDraft, completed: e.target.value })} /></Field><Field label="问题与差异"><textarea className="text-area" rows={4} value={reviewDraft.problems} onChange={(e) => setReviewDraft({ ...reviewDraft, problems: e.target.value })} /></Field><Field label="关键洞察"><textarea className="text-area" rows={4} value={reviewDraft.insight} onChange={(e) => setReviewDraft({ ...reviewDraft, insight: e.target.value })} /></Field><Field label="下一步行动"><textarea className="text-area" rows={4} value={reviewDraft.nextAction} onChange={(e) => setReviewDraft({ ...reviewDraft, nextAction: e.target.value })} /></Field><Field label="关联资料"><FileNames spaceId={spaceId} entityId={reviewDraft.id} files={reviewDraft.attachments} onChange={(attachments) => setReviewDraft({ ...reviewDraft, attachments })} /></Field><div className="modal__actions operations-form-full"><button className="btn-ghost" type="button" onClick={() => setReviewDraft(null)}>取消</button><button className="btn-primary" type="submit">保存复盘</button></div></form></OpsModal>}</> }
+  function renderAds() {
+    const spend = campaigns.reduce((sum, item) => sum + item.spend, 0)
+    const revenue = campaigns.reduce((sum, item) => sum + item.revenue, 0)
+    return <>
+      <div className="operations-section-head operations-section-head--compact">
+        <span aria-hidden="true" />
+        <Button label="新增投流计划" variant="primary" onClick={newCampaign} />
+      </div>
+      <div className="operations-kpi-row">
+        <div><span>广告花费</span><strong>¥{money(spend)}</strong></div>
+        <div><span>广告收入</span><strong>¥{money(revenue)}</strong></div>
+        <div><span>ROAS</span><strong>{spend ? (revenue / spend).toFixed(2) : '0.00'}</strong></div>
+      </div>
+      <div className="operations-card-grid">
+        {campaigns.length ? campaigns.map((item) => {
+          const roas = item.spend ? item.revenue / item.spend : 0
+          const cpa = item.orders ? item.spend / item.orders : 0
+          const product = state.products.find((entry) => entry.id === item.productId)
+          return <ClickableCard padding={0} className="operations-data-card" key={item.id} label={`查看投流计划 ${item.name}`} onClick={() => setCampaignDraft({ ...item })}>
+            <div className="operations-data-card__head">
+              <span className="operations-status operations-status--进行中">{item.status}</span>
+              <div>
+                <IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => setCampaignDraft({ ...item })} />
+                <IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setState((current) => ({ ...current, campaigns: current.campaigns.filter((campaign) => campaign.id !== item.id) }))} />
+              </div>
+            </div>
+            <h2>{item.name}</h2>
+            <p className="operations-muted">{item.platform} · {product?.name || '未关联商品'}</p>
+            <div className="operations-metrics">
+              <span>花费<strong>¥{money(item.spend)}</strong></span>
+              <span>订单<strong>{item.orders}</strong></span>
+              <span>ROAS<strong>{roas.toFixed(2)}</strong></span>
+              <span>CPA<strong>¥{money(cpa)}</strong></span>
+            </div>
+            <p className="operations-card-copy">{item.notes || '暂无投放结论'}</p>
+          </ClickableCard>
+        }) : <div className="operations-empty">还没有投流计划，选品进入测试后可以在这里建立第一条广告记录。</div>}
+      </div>
+      {campaignDraft && <OpsModal title={campaignDraft.name ? '编辑投流计划' : '新增投流计划'} onClose={() => setCampaignDraft(null)} wide>
+        <form className="operations-form-grid" onSubmit={saveCampaign}>
+          <Field label="计划名称" required>
+            <TextInput label="计划名称" value={campaignDraft.name} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setCampaignDraft({ ...campaignDraft, name: nextValue })} />
+          </Field>
+          <Selector
+            label="投放平台"
+            width="100%"
+            options={['Meta', 'Google', 'TikTok', '其他']}
+            value={campaignDraft.platform}
+            onChange={(platform) => setCampaignDraft({ ...campaignDraft, platform })}
+          />
+          <Selector
+            label="关联商品"
+            width="100%"
+            options={[{ value: '', label: '暂不关联' }, ...state.products.map(({ id, name }) => ({ value: id, label: name }))]}
+            placeholder="暂不关联"
+            value={campaignDraft.productId}
+            onChange={(productId) => setCampaignDraft({ ...campaignDraft, productId })}
+          />
+          <Field label="落地页">
+            <TextInput label="落地页" isLabelHidden width="100%" type="url" value={campaignDraft.landingPage} onChange={(nextValue) => setCampaignDraft({ ...campaignDraft, landingPage: nextValue })} />
+          </Field>
+          <Selector
+            label="投放状态"
+            width="100%"
+            options={['准备中', '测试中', '放量中', '暂停']}
+            value={campaignDraft.status}
+            onChange={(status) => setCampaignDraft({ ...campaignDraft, status: status as CampaignStatus })}
+          />
+          {([
+            ['dailyBudget', '日预算'],
+            ['totalBudget', '总预算'],
+            ['spend', '已花费'],
+            ['orders', '订单数'],
+            ['revenue', '广告收入'],
+          ] as const).map(([key, label]) => <Field key={key} label={label}>
+            <NumberInput label={label} value={campaignDraft[key]} isLabelHidden width="100%" min={0} step={0.01} isWheelEnabled={false} onChange={(nextValue) => setCampaignDraft({ ...campaignDraft, [key]: nextValue })} />
+          </Field>)}
+          <Field label="投放结论">
+            <TextArea label="投放结论" isLabelHidden width="100%" rows={3} value={campaignDraft.notes} onChange={(nextValue) => setCampaignDraft({ ...campaignDraft, notes: nextValue })} />
+          </Field>
+          <div className="modal__actions operations-form-full">
+            <Button label="取消" variant="ghost" onClick={() => setCampaignDraft(null)} />
+            <Button label="保存计划" variant="primary" type="submit" isDisabled={!campaignDraft.name.trim()} />
+          </div>
+        </form>
+      </OpsModal>}
+    </>
+  }
+  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><Button label="新增复盘" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newReview} /></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <ClickableCard padding={0} className="operations-data-card" key={item.id} label={`查看复盘 ${item.title}`} onClick={() => setReviewDraft({ ...item })}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => setReviewDraft({ ...item })} /><IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setState((current) => ({ ...current, reviews: current.reviews.filter((review) => review.id !== item.id) }))} /></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></ClickableCard>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={() => setReviewDraft(null)} wide><form className="operations-form-grid" onSubmit={saveReview}><Field label="复盘标题" required><TextInput label="复盘标题" value={reviewDraft.title} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setReviewDraft({ ...reviewDraft, title: nextValue })} /></Field><Field label="日期"><DatePicker label="复盘日期" value={reviewDraft.date} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, date: nextValue })} /></Field><Field label="复盘范围"><TextInput label="复盘范围" isLabelHidden width="100%" value={reviewDraft.scope} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, scope: nextValue })} /></Field><Selector label="结论" width="100%" value={reviewDraft.decision} options={['继续', '调整', '暂停']} onChange={(decision) => setReviewDraft({ ...reviewDraft, decision: decision as ReviewDecision })} /><Field label="完成了什么"><TextArea label="完成了什么" isLabelHidden width="100%" rows={4} value={reviewDraft.completed} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, completed: nextValue })} /></Field><Field label="问题与差异"><TextArea label="问题与差异" isLabelHidden width="100%" rows={4} value={reviewDraft.problems} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, problems: nextValue })} /></Field><Field label="关键洞察"><TextArea label="关键洞察" isLabelHidden width="100%" rows={4} value={reviewDraft.insight} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, insight: nextValue })} /></Field><Field label="下一步行动"><TextArea label="下一步行动" isLabelHidden width="100%" rows={4} value={reviewDraft.nextAction} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, nextAction: nextValue })} /></Field><Field label="关联资料"><FileNames spaceId={spaceId} entityId={reviewDraft.id} files={reviewDraft.attachments} onChange={(attachments) => setReviewDraft({ ...reviewDraft, attachments })} /></Field><div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" onClick={() => setReviewDraft(null)} /><Button label="保存复盘" variant="primary" type="submit" /></div></form></OpsModal>}</> }
   const activeMenuDef = menus.find((menu) => menu.key === activeMenu) || menus[0]
-  return <div className="operations-workspace"><div className="operations-workspace__body">{activeMenu === 'ops-products' ? renderProducts() : activeMenu === 'ops-ads' ? renderAds() : renderKnowledge()}</div>{activeMenuDef && <span className="sr-only">{activeMenuDef.label}</span>}</div>
+  if (activeMenu !== 'ops-products' && activeMenu !== 'ops-ads') {
+    return <OperationsKnowledgeBoard
+      knowledgeTypes={knowledgeTypes}
+      tutorialCards={state.tutorialCards}
+      searchQuery={searchQuery}
+      onChange={(update) => setState((current) => ({
+        ...current,
+        ...update({ knowledgeTypes: current.knowledgeTypes?.length ? current.knowledgeTypes : tutorialTypes, tutorialCards: current.tutorialCards }),
+      }))}
+    />
+  }
+  return <div className="operations-workspace"><div className="operations-workspace__body">{activeMenu === 'ops-products' ? renderProducts() : renderAds()}</div>{activeMenuDef && <span className="sr-only">{activeMenuDef.label}</span>}</div>
 }

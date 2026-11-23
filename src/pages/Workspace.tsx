@@ -6,9 +6,13 @@ import RequirementDetailPage from '../components/RequirementDetailPage'
 import ProjectManagerBoard from '../components/ProjectManagerBoard'
 import OperationsWorkspace from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
+import TodoWorkspace, { TodoDetailDialog } from '../components/TodoWorkspace'
 import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
 import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, updateCompetitor, deleteCompetitorRow, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
+import { useTodoReminders, useWorkspaceTodos } from '../lib/todos'
+
+const TODO_TAB = { key: 'todos', label: '待办事项', icon: 'check' }
 
 function previewRequirements(spaceId: string): Requirement[] {
   const now = Date.now()
@@ -35,6 +39,8 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const isProductManager = space.types.includes('产品经理')
   const isOperationsManager = !isProductManager && space.types.includes('独立站电商运营')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTabKey>('workbench')
+  const [showTodos, setShowTodos] = useState(false)
+  const [todoDetailId, setTodoDetailId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [reminderCount, setReminderCount] = useState(0)
   const [reminderItems, setReminderItems] = useState<{ id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string; projectId?: string }[]>([])
@@ -50,6 +56,9 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const [addSignal, setAddSignal] = useState<Record<string, number>>({})
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [competitors, setCompetitors] = useState<Competitor[]>([])
+  const { todos, error: todoError, saveTodo, deleteTodo, completeTodo } = useWorkspaceTodos(ownerPhone, space.id)
+  const todoReminders = useTodoReminders(todos)
+  const todoDetail = todos.find((item) => item.id === todoDetailId)
 
   useEffect(() => {
     setActiveWorkspaceTab('workbench')
@@ -167,31 +176,80 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     return <div className="empty" style={{ padding: '36px 12px' }}><div style={{ fontSize: 12.5 }}>该模块暂未开放</div></div>
   }
 
-  const view = activeWorkspaceTab === 'retro' ? 'retro' : activeWorkspaceTab === 'knowledge' ? 'knowledge' : activeWorkspaceTab === 'meeting' ? 'meeting' : 'board'
+  const view = activeWorkspaceTab === 'workbench' ? 'board' : activeWorkspaceTab
   const workspaceTabs = isProductManager ? MENUS['产品经理'] : isOperationsManager ? MENUS['独立站电商运营'] : WORKSPACE_TABS
-  const activeTopTab = isProductManager || isOperationsManager ? activeMenu : activeWorkspaceTab
+  const activeTopTab = showTodos ? TODO_TAB.key : isProductManager || isOperationsManager ? activeMenu : activeWorkspaceTab
+  const contentClass = `content${isProductManager ? ' content--product' : isOperationsManager ? ' content--operations' : ' content--project'}`
+  const knowledgeView = isOperationsManager && activeTopTab === 'ops-knowledge'
 
   function changeWorkspaceTab(key: string) {
+    setShowTodos(key === TODO_TAB.key)
+    setSearchQuery('')
+    if (key === TODO_TAB.key) return
     if (isProductManager || isOperationsManager) {
       setActiveMenu(key)
       setDetailTarget(null)
-      setSearchQuery('')
       return
     }
     setActiveWorkspaceTab(key as WorkspaceTabKey)
     setDetailTarget(null)
     setOpenTaskId(null)
-    setSearchQuery('')
     setWorkspaceRevision((value) => value + 1)
   }
 
-  return <>
-    <TopBar title={space.name} workspaceTabs={workspaceTabs} activeWorkspaceTab={activeTopTab} onWorkspaceTabChange={changeWorkspaceTab} onBackToHome={onBackToHome} hideTitle searchQuery={searchQuery} onSearchChange={setSearchQuery} reminderCount={isProductManager ? reminderItems.length : reminderCount} reminderItems={isProductManager ? reminderItems : reminderItems} hideReminder={isOperationsManager} onReminderClick={(item) => { if (item.kind === 'requirement' && item.reqId) { setActiveMenu('req'); setDetailTarget(item.reqId) } else if (item.taskId) { setActiveWorkspaceTab('workbench'); setOpenTaskId(item.taskId); setWorkspaceRevision((value) => value + 1) } }} onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary} />
+  return <div className="workspace-frame">
+    <TopBar
+      title={space.name}
+      workspaceTabs={[...workspaceTabs, TODO_TAB]}
+      activeWorkspaceTab={activeTopTab}
+      onWorkspaceTabChange={changeWorkspaceTab}
+      onBackToHome={onBackToHome}
+      hideTitle
+      searchQuery={searchQuery}
+      searchLabel={showTodos ? '搜索待办事项' : knowledgeView ? '搜索资料' : isOperationsManager ? '搜索运营记录' : isProductManager ? '搜索需求与竞品' : '搜索项目内容'}
+      onSearchChange={setSearchQuery}
+      reminderCount={isProductManager ? reminderItems.length : reminderCount}
+      reminderItems={reminderItems}
+      todoReminders={todoReminders}
+      todoReminderError={todoError}
+      onCompleteTodo={completeTodo}
+      onOpenTodoDetails={setTodoDetailId}
+      todoDetailsOpen={Boolean(todoDetail)}
+      onReminderClick={(item) => {
+        setShowTodos(false)
+        if (item.kind === 'requirement' && item.reqId) {
+          setActiveMenu('req')
+          setDetailTarget(item.reqId)
+        } else if (item.taskId) {
+          setActiveWorkspaceTab('workbench')
+          setOpenTaskId(item.taskId)
+          setWorkspaceRevision((value) => value + 1)
+        }
+      }}
+      onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary}
+    />
     <div className={`main${isProductManager ? ' main--product' : ' main--project'}`}>
-      <section className={`content${isProductManager ? ' content--product' : isOperationsManager ? ' content--operations' : ' content--project'}`}>
-        {isOperationsManager ? <OperationsWorkspace key={space.id} ownerPhone={ownerPhone} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : view === 'retro' || view === 'knowledge' || view === 'meeting' ? <ProjectManagerBoard key={space.id} ownerPhone={ownerPhone} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} onOpenTask={(taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) }} onCloseTask={() => setOpenTaskId(null)} view={view} /> : <ProjectManagerBoard key={space.id} ownerPhone={ownerPhone} spaceId={space.id} searchQuery={searchQuery} onRemindersChange={setReminderCount} onReminders={setReminderItems} openTaskId={openTaskId} onCloseTask={() => setOpenTaskId(null)} view="board" />}
+      <section className={`${contentClass} workspace-module${knowledgeView ? ' content--knowledge' : ''}`} hidden={showTodos}>
+        {isOperationsManager ? <OperationsWorkspace key={space.id} ownerPhone={ownerPhone} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : (
+          <ProjectManagerBoard
+            key={space.id}
+            ownerPhone={ownerPhone}
+            spaceId={space.id}
+            searchQuery={searchQuery}
+            onRemindersChange={setReminderCount}
+            onReminders={setReminderItems}
+            onOpenTask={view !== 'board' ? (taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) } : undefined}
+            openTaskId={view === 'board' ? openTaskId : undefined}
+            onCloseTask={() => setOpenTaskId(null)}
+            view={view}
+          />
+        )}
       </section>
+      {showTodos && <section className={`${contentClass} content--todos`}>
+        <TodoWorkspace todos={todos} searchQuery={searchQuery} error={todoError} onOpenDetails={setTodoDetailId} onSave={saveTodo} onDelete={deleteTodo} onComplete={completeTodo} />
+      </section>}
     </div>
+    {todoDetail && <TodoDetailDialog todo={todoDetail} onClose={() => setTodoDetailId(null)} />}
     {summaryOpen && <SummaryWorkspace projects={summaryProjects} tasks={summaryTasks} issues={summaryIssues} summaries={summaryRecords} onChange={updateSummaryRecords} onClose={() => setSummaryOpen(false)} />}
-  </>
+  </div>
 }

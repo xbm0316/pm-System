@@ -1,3 +1,8 @@
+import { Heading } from '@astryxdesign/core/Text'
+import { WorkspaceOverlay } from './WorkspaceDialog'
+import { ClickableCard } from '@astryxdesign/core/ClickableCard'
+import { TextArea } from '@astryxdesign/core/TextArea'
+import { Button } from '@astryxdesign/core/Button'
 import { useState } from 'react'
 import { type Requirement, type Retro } from '../lib/store'
 
@@ -39,7 +44,7 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
           {list.map((r) => {
             const cnt = retros.filter((x) => x.reqId === r.id).length
             return (
-              <div key={r.id} className="retro-card">
+              <ClickableCard padding={0} key={r.id} className="retro-card" label={`查看复盘 ${r.name}`} onClick={() => { setOpenId(r.id); setDraft('') }}>
                 <div className="retro-card__top">
                   <span className="retro-card__ver">{r.version}</span>
                   <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
@@ -57,16 +62,16 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
                     复盘
                   </button>
                 </div>
-              </div>
+              </ClickableCard>
             )
           })}
         </div>
       )}
 
       {current && (
-        <div className="overlay" onClick={() => setOpenId(null)}>
-          <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">复盘 · {current.name}</div>
+        <WorkspaceOverlay label={`复盘 · ${current.name}`} onClose={() => setOpenId(null)}>
+          <div className="modal modal--wide">
+            <Heading level={3} accessibilityLevel={2} className="modal__title">复盘 · {current.name}</Heading>
 
             <div className="retro-list">
               {currentRetros.length === 0 ? (
@@ -84,28 +89,14 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
             <div className="field-label" style={{ marginTop: 18 }}>
               写复盘
             </div>
-            <textarea
-              className="text-area"
-              rows={4}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="做得好的是什么，下次改什么…"
-            />
+            <TextArea label="写复盘" isLabelHidden width="100%" rows={4} value={draft} placeholder="做得好的是什么，下次改什么…" onChange={setDraft} />
 
             <div className="modal__actions">
-              <button className="btn-ghost" onClick={() => setOpenId(null)}>
-                关闭
-              </button>
-              <button
-                className="btn-primary"
-                onClick={save}
-                style={{ opacity: draft.trim() ? 1 : 0.45 }}
-              >
-                保存复盘
-              </button>
+              <Button label="关闭" variant="ghost" onClick={() => setOpenId(null)} />
+              <Button label="保存复盘" variant="primary" onClick={save} style={{ opacity: draft.trim() ? 1 : 0.45 }} />
             </div>
           </div>
-        </div>
+        </WorkspaceOverlay>
       )}
     </>
   )

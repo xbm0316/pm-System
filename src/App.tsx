@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
+import { Spinner } from '@astryxdesign/core/Spinner'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import Login from './pages/Login'
 import Home from './pages/Home'
-import Workspace from './pages/Workspace'
 import { loadSession, saveSession, uid, type Space, type TypeName } from './lib/store'
 import { fetchSpaces, insertSpace, updateSpaceName, deleteSpaceRow } from './lib/api'
 import { deleteLocalFilesForSpace, registerLocalFileServiceWorker } from './lib/localFiles'
+
+const Workspace = lazy(() => import('./pages/Workspace'))
+const loadingView = <div className="app-loading"><Spinner label="加载中…" aria-label="加载中" /></div>
 
 export default function App() {
   const [phone, setPhone] = useState<string | null>(() => loadSession())
@@ -14,7 +17,6 @@ export default function App() {
   const [localFilesReady, setLocalFilesReady] = useState(false)
 
   useEffect(() => {
-    document.documentElement.removeAttribute('data-theme')
     void registerLocalFileServiceWorker().finally(() => setLocalFilesReady(true))
   }, [])
 
@@ -58,41 +60,24 @@ export default function App() {
     await deleteLocalFilesForSpace(id)
   }
 
-  if (!localFilesReady) {
-    return (
-      <div style={{
-        height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, color: 'var(--text-3)',
-      }}>
-        加载中…
-      </div>
-    )
-  }
+  if (!localFilesReady || (phone && loading)) return loadingView
 
   if (!phone) {
     return <Login onLogin={handleLogin} />
-  }
-
-  if (loading) {
-    return (
-      <div style={{
-        height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, color: 'var(--text-3)',
-      }}>
-        加载中…
-      </div>
-    )
   }
 
   const activeSpace = spaces.find((s) => s.id === activeSpaceId)
 
   if (activeSpace) {
     return (
-      <Workspace
-        space={activeSpace}
-        ownerPhone={phone}
-        onBackToHome={() => setActiveSpaceId(null)}
-      />
+      <Suspense fallback={loadingView}>
+        <Workspace
+          key={`${phone}:${activeSpace.id}`}
+          space={activeSpace}
+          ownerPhone={phone}
+          onBackToHome={() => setActiveSpaceId(null)}
+        />
+      </Suspense>
     )
   }
 

@@ -1,3 +1,7 @@
+import { Heading } from '@astryxdesign/core/Text'
+import { WorkspaceOverlay } from './WorkspaceDialog'
+import { TextArea } from '@astryxdesign/core/TextArea'
+import { Button } from '@astryxdesign/core/Button'
 import { useState } from 'react'
 import type { Requirement, Retro } from '../lib/store'
 
@@ -26,10 +30,9 @@ export default function RetroDialog({ requirement, retros, onAdd, onClose, embed
     setDraft('')
   }
 
-  return (
-    <div className={embedded ? 'retro-panel' : 'overlay'} onClick={embedded ? undefined : onClose}>
-      <div className={embedded ? 'retro-panel__content' : 'modal modal--wide retro-dialog'} onClick={(event) => event.stopPropagation()}>
-        <div className="modal__title">复盘 · {requirement.name}</div>
+  const panel = (
+      <div className={embedded ? 'retro-panel__content' : 'modal modal--wide retro-dialog'}>
+        <Heading level={3} accessibilityLevel={2} className="modal__title">复盘 · {requirement.name}</Heading>
         <div className="retro-list">
           {currentRetros.length === 0 ? (
             <div className="retro-list__empty">还没有复盘记录</div>
@@ -41,18 +44,12 @@ export default function RetroDialog({ requirement, retros, onAdd, onClose, embed
           ))}
         </div>
         <div className="field-label" style={{ marginTop: 18 }}>写复盘</div>
-        <textarea
-          className="text-area"
-          rows={4}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="做得好的是什么，下次改什么…"
-        />
+        <TextArea label="写复盘" isLabelHidden width="100%" rows={4} value={draft} placeholder="做得好的是什么，下次改什么…" onChange={setDraft} />
         <div className="modal__actions">
-          <button className="btn-ghost" onClick={onClose}>关闭</button>
-          <button className="btn-primary" onClick={save} style={{ opacity: draft.trim() ? 1 : 0.45 }}>保存复盘</button>
+          <Button label="关闭" variant="ghost" onClick={onClose} />
+          <Button label="保存复盘" variant="primary" onClick={save} style={{ opacity: draft.trim() ? 1 : 0.45 }} />
         </div>
       </div>
-    </div>
   )
+  return embedded ? <div className="retro-panel">{panel}</div> : <WorkspaceOverlay label={`复盘 · ${requirement.name}`} onClose={onClose}>{panel}</WorkspaceOverlay>
 }

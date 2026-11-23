@@ -1,48 +1,38 @@
-import { useState } from 'react'
+import { Banner } from '@astryxdesign/core/Banner'
+import { Button } from '@astryxdesign/core/Button'
+import { Card } from '@astryxdesign/core/Card'
+import { VStack } from '@astryxdesign/core/Layout'
+import { Heading } from '@astryxdesign/core/Text'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { useState, type FormEvent } from 'react'
 import { ALLOWED_PHONES } from '../lib/store'
 
-interface Props {
-  onLogin: (phone: string) => void
-}
-
-export default function Login({ onLogin }: Props) {
+export default function Login({ onLogin }: { onLogin: (phone: string) => void }) {
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
 
-  function submit() {
-    const v = phone.trim()
-    if (!v) return
-    if (ALLOWED_PHONES.includes(v)) {
-      onLogin(v)
-    } else {
-      setError('该账号无权限')
-    }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const value = phone.trim()
+    if (!value) return
+    if (ALLOWED_PHONES.includes(value)) onLogin(value)
+    else setError('该账号无权限')
   }
 
   return (
-    <div className="login-wrap">
-      <div className="login-card">
-        <input
-          className="text-input"
-          style={{ letterSpacing: '0.02em' }}
-          placeholder="手机号"
-          value={phone}
-          onChange={(e) => {
-            setPhone(e.target.value)
-            setError('')
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          autoFocus
-        />
-
-        <button className="login-btn" onClick={submit}>
-          登录
-        </button>
-
-        {error && (
-          <div className="alert-error">{error}</div>
-        )}
+    <main className="app-login">
+      <div>
+        <Card padding={6}>
+          <form onSubmit={submit}>
+            <VStack gap={4}>
+              <Heading level={2} accessibilityLevel={1}>登录工作空间</Heading>
+              <TextInput label="手机号" type="tel" autoComplete="tel" hasAutoFocus width="100%" value={phone} onChange={(value) => { setPhone(value); setError('') }} />
+              {error && <Banner status="error" title={error} />}
+              <Button label="登录" type="submit" variant="primary" width="100%" isDisabled={!phone.trim()} />
+            </VStack>
+          </form>
+        </Card>
       </div>
-    </div>
+    </main>
   )
 }

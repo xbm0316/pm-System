@@ -1,217 +1,105 @@
-import { useState, useEffect, useRef } from 'react'
+import { Badge } from '@astryxdesign/core/Badge'
+import { Button } from '@astryxdesign/core/Button'
+import { ClickableCard } from '@astryxdesign/core/ClickableCard'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Icon } from '@astryxdesign/core/Icon'
+import { HStack, Layout, LayoutContent, LayoutHeader, VStack } from '@astryxdesign/core/Layout'
+import { MoreMenu } from '@astryxdesign/core/MoreMenu'
+import { Selector } from '@astryxdesign/core/Selector'
+import { Heading, Text } from '@astryxdesign/core/Text'
+import { TextInput } from '@astryxdesign/core/TextInput'
+import { Toolbar } from '@astryxdesign/core/Toolbar'
+import { useState, type FormEvent } from 'react'
 import TopBar from '../components/TopBar'
-import Icon from '../components/Icon'
+import WorkspaceDialog from '../components/WorkspaceDialog'
+import WorkspaceIcon from '../components/Icon'
 import { ALL_TYPES, type Space, type TypeName } from '../lib/store'
 
 interface Props {
   spaces: Space[]
-  onOpen: (s: Space) => void
+  onOpen: (space: Space) => void
   onCreate: (name: string, types: TypeName[]) => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onLogout: () => void
 }
 
-export default function Home({
-  spaces,
-  onOpen,
-  onCreate,
-  onRename,
-  onDelete,
-  onLogout,
-}: Props) {
+export default function Home({ spaces, onOpen, onCreate, onRename, onDelete, onLogout }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newTypes, setNewTypes] = useState<TypeName[]>(['项目经理'])
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
-  const [renaming, setRenaming] = useState<Space | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const menuRef = useRef<HTMLDivElement>(null)
+  const [draft, setDraft] = useState<{ name: string; type: TypeName; id?: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Space | null>(null)
+  const query = searchQuery.trim().toLocaleLowerCase()
+  const visibleSpaces = spaces.filter((space) => !query || [space.name, ...space.types].join(' ').toLocaleLowerCase().includes(query))
 
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpenId(null)
-      }
-    }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [])
-
-  function submitCreate() {
-    const name = newName.trim()
-    if (!name || newTypes.length === 0) return
-    onCreate(name, newTypes)
-    setShowCreate(false)
-    setNewName('')
-    setNewTypes(['项目经理'])
+  function startCreate() {
+    setDraft({ name: '', type: '项目经理' })
   }
 
-  function toggleType(type: TypeName) {
-    setNewTypes([type])
+  function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!draft?.name.trim()) return
+    if (draft.id) onRename(draft.id, draft.name.trim())
+    else onCreate(draft.name.trim(), [draft.type])
+    setDraft(null)
   }
 
-  function submitRename() {
-    if (!renaming) return
-    const v = renameValue.trim()
-    if (v) onRename(renaming.id, v)
-    setRenaming(null)
-    setRenameValue('')
-  }
-
-  return (
-    <>
-      <TopBar
-        title="工作空间"
-        hideTitle
-        onLogout={onLogout}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
-
-      <div className="page">
-        <div className="page__head">
-          <div className="page__title">我的空间</div>
-          <div style={{ flex: 1 }} />
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>
-            + 新建空间
-          </button>
-        </div>
-
-        {spaces.filter((s) => {
-          const q = searchQuery.trim().toLocaleLowerCase()
-          return !q || [s.name, ...s.types].join(' ').toLocaleLowerCase().includes(q)
-        }).length === 0 ? (
-          <div className="empty">
-            <div>还没有空间</div>
-            <div className="empty__hint">点击右上角「+ 新建空间」开始</div>
-          </div>
-        ) : (
-          <div className="space-grid">
-            {spaces.filter((s) => {
-              const q = searchQuery.trim().toLocaleLowerCase()
-              return !q || [s.name, ...s.types].join(' ').toLocaleLowerCase().includes(q)
-            }).map((s) => (
-              <div key={s.id} className="space-card" onClick={() => onOpen(s)}>
-                <div className="space-card__top">
-                  <div className="space-card__name">{s.name}</div>
-                  <div style={{ flex: 1 }} />
-                  <button
-                    className="space-card__menu-btn"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setMenuOpenId(menuOpenId === s.id ? null : s.id)
-                    }}
-                  >
-                    <Icon name="dots" size={16} color="currentColor" />
-                  </button>
-                </div>
-
-                <div className="space-card__tags">
-                  {s.types.map((t) => (
-                    <span key={t} className="tag">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-
-                {menuOpenId === s.id && (
-                  <div className="dropdown" ref={menuRef} onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="dropdown__item"
-                      onClick={() => {
-                        setRenaming(s)
-                        setRenameValue(s.name)
-                        setMenuOpenId(null)
-                      }}
-                    >
-                      改名
-                    </button>
-                    <button
-                      className="dropdown__item dropdown__item--danger"
-                      onClick={() => {
-                        if (confirm(`删除空间「${s.name}」？此操作不可恢复。`)) {
-                          onDelete(s.id)
-                        }
-                        setMenuOpenId(null)
-                      }}
-                    >
-                      删除
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+  return <>
+    <TopBar title="工作空间" hideTitle onLogout={onLogout} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+    <main className="app-home">
+      <div className="app-home__surface">
+        <Layout
+          header={<LayoutHeader hasDivider padding={4}>
+            <Toolbar label="工作空间操作" gap={2}
+              startContent={<><Heading level={3} accessibilityLevel={1}>我的空间</Heading><Badge label={visibleSpaces.length} variant="neutral" /></>}
+              endContent={<Button label="新建空间" variant="primary" icon={<WorkspaceIcon name="plus" size={16} />} onClick={startCreate} />}
+            />
+          </LayoutHeader>}
+          content={<LayoutContent padding={4}>
+            {visibleSpaces.length ? <div className="app-home__grid">
+              {visibleSpaces.map((space) => (
+                <ClickableCard key={space.id} padding={4} label={space.name} onClick={() => onOpen(space)}>
+                    <VStack gap={2}>
+                      <HStack hAlign="between" gap={2} vAlign="start">
+                        <Heading level={4} accessibilityLevel={2}>{space.name}</Heading>
+                        <MoreMenu size="sm" label={`${space.name}操作`} items={[
+                          { label: '改名', onClick: () => setDraft({ id: space.id, name: space.name, type: space.types[0] ?? '项目经理' }) },
+                          { label: '删除', onClick: () => setDeleteTarget(space) },
+                        ]} />
+                      </HStack>
+                      <HStack gap={1} wrap="wrap">{space.types.map((type) => <Badge key={type} label={type} variant="neutral" />)}</HStack>
+                    </VStack>
+                </ClickableCard>
+              ))}
+            </div> : <div className="app-home__empty">
+              <EmptyState title={query ? '没有匹配的空间' : '还没有空间'} icon={<Icon icon="viewColumns" size="lg" color="secondary" />} />
+            </div>}
+          </LayoutContent>}
+        />
       </div>
-
-      {showCreate && (
-        <div className="overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">新建空间</div>
-
-            <div className="field-label">空间名称</div>
-            <input
-              className="text-input"
-              style={{ marginBottom: 20 }}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="给空间起个名字"
-              autoFocus
-            />
-
-            <div className="field-label">空间类型</div>
-            <div className="type-list">
-              {ALL_TYPES.map((type) => {
-                const selected = newTypes.includes(type)
-                return <button type="button" key={type} className={`type-opt${selected ? ' type-opt--on' : ''}`} onClick={() => toggleType(type)}>
-                  <span className="type-opt__box">{selected && <span>✓</span>}</span>
-                  <span className="type-opt__label">{type}</span>
-                </button>
-              })}
-            </div>
-
-            <div className="modal__actions">
-              <button className="btn-ghost" onClick={() => setShowCreate(false)}>
-                取消
-              </button>
-              <button
-                className="btn-primary"
-                onClick={submitCreate}
-                style={{ opacity: !newName.trim() || newTypes.length === 0 ? 0.45 : 1 }}
-              >
-                创建
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {renaming && (
-        <div className="overlay" onClick={() => setRenaming(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal__title">改名</div>
-            <div className="field-label">空间名称</div>
-            <input
-              className="text-input"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submitRename()}
-              autoFocus
-            />
-            <div className="modal__actions">
-              <button className="btn-ghost" onClick={() => setRenaming(null)}>
-                取消
-              </button>
-              <button className="btn-primary" onClick={submitRename}>
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
+    </main>
+    {draft && <WorkspaceDialog title={draft.id ? '改名' : '新建空间'} onClose={() => setDraft(null)}>
+      <form className="app-dialog-form" onSubmit={save}>
+        <VStack gap={3}>
+          <TextInput label="空间名称" isRequired hasAutoFocus value={draft.name} onChange={(name) => setDraft({ ...draft, name })} />
+          {!draft.id && <Selector label="空间类型" options={[...ALL_TYPES]} value={draft.type} onChange={(value) => {
+            const type = ALL_TYPES.find((option) => option === value)
+            if (type) setDraft({ ...draft, type })
+          }} />}
+        </VStack>
+        <HStack gap={2} hAlign="end">
+          <Button label="取消" variant="secondary" onClick={() => setDraft(null)} />
+          <Button label={draft.id ? '保存' : '创建'} variant="primary" type="submit" isDisabled={!draft.name.trim()} />
+        </HStack>
+      </form>
+    </WorkspaceDialog>}
+    {deleteTarget && <WorkspaceDialog title="删除空间？" purpose="info" onClose={() => setDeleteTarget(null)}>
+      <div className="app-dialog-form">
+        <Text>删除「{deleteTarget.name}」后无法恢复。</Text>
+        <HStack gap={2} hAlign="end">
+          <Button label="取消" variant="secondary" onClick={() => setDeleteTarget(null)} />
+          <Button label="确认删除" variant="destructive" onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null) }} />
+        </HStack>
+      </div>
+    </WorkspaceDialog>}
+  </>
 }

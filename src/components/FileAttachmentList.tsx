@@ -1,7 +1,12 @@
+import { Link } from '@astryxdesign/core/Link'
+import { Heading } from '@astryxdesign/core/Text'
+import { Table, TableBody, TableRow, TableCell } from '@astryxdesign/core/Table'
+import { WorkspaceOverlay } from './WorkspaceDialog'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { Button } from '@astryxdesign/core/Button'
+import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import { useEffect, useMemo, useState } from 'react'
 import Icon from './Icon'
-import mammoth from 'mammoth'
-import * as XLSX from 'xlsx'
 import { fetchLocalBuffer, getLocalFile, localFileUrl, openLocalFolder, type LocalAttachment } from '../lib/localFiles'
 
 export type AttachmentLike = {
@@ -50,10 +55,15 @@ export function FilePreviewModal({ file, onClose, onDelete }: { file: Attachment
     let cancelled = false
     void fetchLocalBuffer(url).then(async (buffer) => {
       if (isText(file)) setText(new TextDecoder().decode(new Uint8Array(buffer)))
-      if (isDocx(file)) setHtml((await mammoth.convertToHtml({ arrayBuffer: buffer })).value)
+      if (isDocx(file)) {
+        const { default: mammoth } = await import('mammoth')
+        const { value } = await mammoth.convertToHtml({ arrayBuffer: buffer })
+        if (!cancelled) setHtml(value)
+      }
       if (isSheet(file)) {
+        const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'array' }); const sheet = workbook.Sheets[workbook.SheetNames[0]]
-        setRows((XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]).map((row) => row.map((cell) => String(cell))))
+        if (!cancelled) setRows((XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]).map((row) => row.map((cell) => String(cell))))
       }
     }).catch(() => undefined).finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -71,16 +81,16 @@ export function FilePreviewModal({ file, onClose, onDelete }: { file: Attachment
       } else setFolderMessage('该旧附件没有可用路径')
     }
   }
-  return <div className="overlay" onClick={onClose}>
-    <div className="modal attachment-preview attachment-preview--unified" onClick={(event) => event.stopPropagation()}>
-      <div className="modal__title-row"><div className="modal__title">{file.name}</div><button className="icon-btn" type="button" onClick={onClose} aria-label="关闭"><Icon name="close" size={15} /></button></div>
+  return <WorkspaceOverlay label={file.name} onClose={onClose}>
+    <div className="modal attachment-preview attachment-preview--unified">
+      <div className="modal__title-row"><Heading level={3} accessibilityLevel={2} className="modal__title">{file.name}</Heading><IconButton label="关闭" variant="ghost" size="sm" icon={<Icon name="close" size={15} />} type="button" onClick={onClose} /></div>
       <div className="file-preview-meta"><span>{mime}</span><span>{formatSize(file.size)}</span></div>
-      {loading ? <div className="knowledge-unsupported">正在解析文件预览…</div> : canEmbed && url ? (isImage(file) ? <img className="attachment-preview__image" src={url} alt={file.name} /> : <iframe className="attachment-preview__pdf" title={file.name} src={url} />) : isDocx(file) && html ? <div className="knowledge-docx-preview" dangerouslySetInnerHTML={{ __html: html }} /> : isText(file) ? <pre className="knowledge-text-preview">{text}</pre> : isSheet(file) ? <table className="knowledge-csv-table"><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody></table> : <div className="attachment-preview__file"><span className="attachment-preview__file-icon"><Icon name="doc" size={20} /></span><strong>暂不支持在当前页面直接渲染</strong><span>可以打开或下载后使用对应应用查看。</span></div>}
+      {loading ? <div className="knowledge-unsupported">正在解析文件预览…</div> : canEmbed && url ? (isImage(file) ? <img className="attachment-preview__image" src={url} alt={file.name} /> : <iframe className="attachment-preview__pdf" title={file.name} src={url} />) : isDocx(file) && html ? <div className="knowledge-docx-preview" dangerouslySetInnerHTML={{ __html: html }} /> : isText(file) ? <pre className="knowledge-text-preview">{text}</pre> : isSheet(file) ? <Table density="compact" className="knowledge-csv-table"><TableBody>{rows.map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody></Table> : <div className="attachment-preview__file"><span className="attachment-preview__file-icon"><Icon name="doc" size={20} /></span><strong>暂不支持在当前页面直接渲染</strong><span>可以打开或下载后使用对应应用查看。</span></div>}
       {file.relativePath && <div className="file-preview-path"><span>路径</span><code>{file.relativePath}</code></div>}
       {folderMessage && <div className="file-preview-folder-message" role="status">{folderMessage}</div>}
-      <div className="modal__actions"><button type="button" className="btn-ghost" onClick={() => void revealFolder()}><Icon name="folder" size={13} /> 打开文件夹</button><a className="btn-ghost attachment-preview__download" href={url || undefined} download={file.name} target={canEmbed ? undefined : '_blank'} rel="noreferrer">{canEmbed ? '下载附件' : '打开文件'}</a>{onDelete && <button type="button" className="btn-ghost btn-ghost--danger" onClick={onDelete}><Icon name="trash" size={13} /> 删除</button>}<button type="button" className="btn-primary" onClick={onClose}>关闭</button></div>
+      <div className="modal__actions"><Button label="打开文件夹" variant="ghost" icon={<Icon name="folder" size={13} />} type="button" onClick={() => void revealFolder()} /><a className="btn-ghost attachment-preview__download" href={url || undefined} download={file.name} target={canEmbed ? undefined : '_blank'} rel="noreferrer">{canEmbed ? '下载附件' : '打开文件'}</a>{onDelete && <Button label="删除" variant="ghost" icon={<Icon name="trash" size={13} />} type="button" onClick={onDelete} className="btn-ghost--danger" />}<Button label="关闭" variant="primary" type="button" onClick={onClose} /></div>
     </div>
-  </div>
+  </WorkspaceOverlay>
 }
 
 export default function FileAttachmentList({ files, onDelete, compact = false }: { files: AttachmentLike[]; onDelete?: (file: AttachmentLike) => void; compact?: boolean }) {
@@ -115,14 +125,14 @@ export default function FileAttachmentList({ files, onDelete, compact = false }:
     <div className={`file-attachment-list${compact ? ' file-attachment-list--compact' : ''}`}>
       {visibleFiles.map((file) => {
         const url = previewUrl(file)
-        return <div className="file-attachment-item" key={file.id}>
-          <div className="file-attachment-item__main" role="button" tabIndex={0} onClick={() => setPreview(file)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setPreview(file) } }}>
+        return <ClickableCard padding={0} className="file-attachment-item" key={file.id} label={`查看附件 ${file.name}`} onClick={() => setPreview(file)}>
+          <div className="file-attachment-item__main">
             {isImage(file) && url ? <img src={url} alt="" /> : <span className="file-attachment-item__icon"><Icon name="doc" size={16} /></span>}
-            <span className="file-attachment-item__body"><strong>{file.name}</strong><small>{file.mimeType || file.type || '文件'} · {formatSize(file.size)}</small>{file.relativePath ? <button type="button" className="file-attachment-item__path" onClick={(event) => { event.stopPropagation(); void revealFolder(file) }}>{file.relativePath}</button> : <em>路径暂不可用（旧附件）</em>}</span>
+            <span className="file-attachment-item__body"><strong>{file.name}</strong><small>{file.mimeType || file.type || '文件'} · {formatSize(file.size)}</small>{file.relativePath ? <Link type="supporting" color="secondary" onClick={() => void revealFolder(file)}>{file.relativePath}</Link> : <em>路径暂不可用（旧附件）</em>}</span>
           </div>
-          <div className="file-attachment-item__actions"><button type="button" className="icon-btn" title="在线预览" aria-label={`在线预览 ${file.name}`} onClick={() => setPreview(file)}><Icon name="eye" size={13} /></button><button type="button" className="icon-btn" title="打开文件夹" aria-label={`打开文件夹 ${file.name}`} onClick={() => void revealFolder(file)}><Icon name="folder" size={13} /></button>{onDelete && <button type="button" className="icon-btn icon-btn--danger" title="删除附件" aria-label={`删除附件 ${file.name}`} onClick={() => onDelete(file)}><Icon name="trash" size={13} /></button>}</div>
+          <div className="file-attachment-item__actions"><IconButton label={`在线预览 ${file.name}`} variant="ghost" size="sm" icon={<Icon name="eye" size={13} />} type="button" onClick={() => setPreview(file)} /><IconButton label={`打开文件夹 ${file.name}`} variant="ghost" size="sm" icon={<Icon name="folder" size={13} />} type="button" onClick={() => void revealFolder(file)} />{onDelete && <IconButton label={`删除附件 ${file.name}`} variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => onDelete(file)} className="icon-btn--danger" />}</div>
           {folderMessage[file.id] && <span className="file-attachment-item__message">{folderMessage[file.id]}</span>}
-        </div>
+        </ClickableCard>
       })}
     </div>
     {preview && <FilePreviewModal file={preview} onClose={() => setPreview(null)} onDelete={onDelete ? () => { onDelete(preview); setPreview(null) } : undefined} />}
