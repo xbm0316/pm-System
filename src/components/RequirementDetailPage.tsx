@@ -9,6 +9,7 @@ import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
+import PriorityBadge from './PriorityBadge'
 import ReqTrack from './ReqTrack'
 import type { Competitor, Requirement, RequirementAttachment, RequirementStatus } from '../lib/store'
 import DatePicker from './DatePicker'
@@ -102,7 +103,7 @@ export default function RequirementDetailPage({ requirement, requirements, compe
           <IconButton label="返回需求池" variant="ghost" size="sm" icon={<Icon name="arrowLeft" size={16} />} type="button" onClick={onClose} className="requirement-detail-page__back" />
         <div className="requirement-detail-page__identity">
             <div className="requirement-detail-page__eyebrow">需求详情</div>
-            <div className="requirement-detail-page__meta-row"><span className="requirement-detail-page__version">{requirement.version}</span><span className={`pri pri--${requirement.priority.toLowerCase()}`}>{requirement.priority}</span></div>
+            <div className="requirement-detail-page__meta-row"><span className="requirement-detail-page__version">{requirement.version}</span><PriorityBadge priority={requirement.priority} /></div>
             <h1><span className="requirement-detail-page__name">{requirement.name}</span></h1>
           </div>
         </div>

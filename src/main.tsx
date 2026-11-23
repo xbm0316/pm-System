@@ -10,7 +10,7 @@ import App from './App'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Theme theme={neutralTheme} mode="dark">
+    <Theme theme={neutralTheme} mode="light">
       <InternationalizationProvider locale="zh-CN" messages={{ 'zh-CN': zhCN }}>
         <App />
       </InternationalizationProvider>

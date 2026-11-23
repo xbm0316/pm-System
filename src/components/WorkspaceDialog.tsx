@@ -7,12 +7,13 @@ interface Props {
   children: ReactNode
   width?: number | string
   purpose?: 'form' | 'info'
+  className?: string
 }
 
-export default function WorkspaceDialog({ title, onClose, children, width = 480, purpose = 'form' }: Props) {
+export default function WorkspaceDialog({ title, onClose, children, width = 480, purpose = 'form', className }: Props) {
   const onOpenChange = (open: boolean) => { if (!open) onClose() }
   return (
-    <Dialog isOpen onOpenChange={onOpenChange} purpose={purpose} width={width} maxHeight="90dvh">
+    <Dialog isOpen onOpenChange={onOpenChange} purpose={purpose} width={width} maxHeight="90dvh" className={className}>
       <DialogHeader title={title} onOpenChange={onOpenChange} />
       {children}
     </Dialog>

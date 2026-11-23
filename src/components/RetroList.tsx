@@ -5,6 +5,7 @@ import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { useState } from 'react'
 import { type Requirement, type Retro } from '../lib/store'
+import PriorityBadge from './PriorityBadge'
 
 interface Props {
   spaceId: string
@@ -47,7 +48,7 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
               <ClickableCard padding={0} key={r.id} className="retro-card" label={`查看复盘 ${r.name}`} onClick={() => { setOpenId(r.id); setDraft('') }}>
                 <div className="retro-card__top">
                   <span className="retro-card__ver">{r.version}</span>
-                  <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
+                  <PriorityBadge priority={r.priority} />
                 </div>
                 <div className="retro-card__name">{r.name}</div>
                 <div className="retro-card__foot">

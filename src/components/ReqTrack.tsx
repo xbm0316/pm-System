@@ -12,10 +12,8 @@ import {
 } from '../lib/store'
 import { deleteLocalFile } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
-
-function statusKey(status: RequirementStatus) {
-  return status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'
-}
+import PriorityBadge from './PriorityBadge'
+import { Stepper, Step } from '@astryxdesign/core/Stepper'
 
 interface Props {
   spaceId: string
@@ -48,42 +46,10 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
     return (
       <>
         <div className="track-detail">
-        <div className="progress">
-          <div className="progress__track">
-            {REQ_STATUSES.slice(0, -1).map((_, i) => (
-              <div
-                key={`connector-${i}`}
-                className={`progress__connector progress__connector--${statusKey(REQ_STATUSES[i])}${i < idx ? ' progress__connector--done' : ''}`}
-                style={{ left: `${i * 25}%`, width: '25%' }}
-              />
-            ))}
-            {REQ_STATUSES.map((st, i) => {
-              const done = i <= idx
-              return (
-                <div
-                  key={st}
-                  className={`progress__node progress__node--${statusKey(st)}${i === 0 ? ' progress__node--first' : ''}${i === REQ_STATUSES.length - 1 ? ' progress__node--last' : ''}`}
-                  style={{ left: `${(i / (REQ_STATUSES.length - 1)) * 100}%` }}
-                >
-                  <div className="progress__dot-wrap">
-                    <div className={`progress__dot${done ? ' progress__dot--done' : ''}${i === idx ? ' progress__dot--current' : ''}`} />
-                  </div>
-                  <div className="progress__label-row">
-                    <span className={`progress__label${done ? ' progress__label--done' : ''}${i === idx ? ' progress__label--current' : ''}`}>
-                      {st}
-                    </span>
-                    <button
-                      className={`progress__check${i === idx ? ' progress__check--done' : ''}`}
-                      onClick={() => onStatusChange(r.id, st)}
-                      title={`标记为${st}`}
-                    >
-                      <Icon name="check" size={11} />
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+        <div className="progress astryx-req-stepper">
+          <Stepper activeStep={idx} label="需求状态" onStepClick={(step) => onStatusChange(r.id, REQ_STATUSES[step])} indicatorPosition="on-track" horizontalOptions={{ minimumStepWidth: 104, collapsedVariant: 'withLabel' }}>
+            {REQ_STATUSES.map((status, step) => <Step key={status} step={step} label={status} />)}
+          </Stepper>
         </div>
 
         <div className="track-detail__content">
@@ -134,7 +100,7 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
             <button key={r.id} className="track-card" onClick={() => setDetailId(r.id)}>
               <div className="track-card__top">
                 <span className="track-card__ver">{r.version}</span>
-                <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
+                <PriorityBadge priority={r.priority} />
               </div>
               <div className="track-card__name">{r.name}</div>
               <div className="track-card__status">

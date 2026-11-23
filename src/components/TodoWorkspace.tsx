@@ -15,6 +15,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { formatTodoDueAt, type Todo, type TodoFields } from '../lib/todos'
 import { dateKey } from './DatePicker'
 import Icon from './Icon'
+import RichTextField from './RichTextField'
 import WorkspaceDialog from './WorkspaceDialog'
 
 interface Props {
@@ -39,7 +40,7 @@ function newDraft(): Draft {
 }
 
 export function TodoDetailDialog({ todo, onClose }: { todo: Todo; onClose: () => void }) {
-  return <WorkspaceDialog title="待办详情" onClose={onClose} purpose="info">
+  return <WorkspaceDialog title="待办详情" onClose={onClose} purpose="info" className="todo-dialog">
     <dl className="todo-details">
       <div><dt>标题</dt><dd>{todo.title}</dd></div>
       <div><dt>完成时间</dt><dd><time dateTime={new Date(todo.dueAt).toISOString()}>{formatTodoDueAt(todo.dueAt)}</time></dd></div>
@@ -58,6 +59,12 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
   // Older records have no timestamp, but storage preserves their insertion order.
   const visible = todos.filter((item) => !query || `${item.title} ${item.content}`.toLocaleLowerCase().includes(query))
     .reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+  const now = Date.now()
+  const groups = [
+    { title: '未完成', items: visible.filter((item) => item.completedAt === undefined && new Date(item.dueAt).getTime() >= now), done: false, variant: 'neutral' as const },
+    { title: '已完成', items: visible.filter((item) => item.completedAt !== undefined), done: true, variant: 'success' as const },
+    { title: '已超时', items: visible.filter((item) => item.completedAt === undefined && new Date(item.dueAt).getTime() < now), done: false, variant: 'error' as const },
+  ]
 
   function openDraft(value: Draft) {
     setDateInvalid(false)
@@ -92,17 +99,14 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
         />
       </LayoutHeader>}
       content={<LayoutContent padding={4}>
-        <VStack gap={4}>
-          {error && !draft && !deleteTarget && <Banner status="error" title={error} />}
-          {[
-            { title: '未完成', items: visible.filter((item) => item.completedAt === undefined), done: false },
-            { title: '已完成', items: visible.filter((item) => item.completedAt !== undefined), done: true },
-          ].map(({ title, items, done }) => (
+        {error && !draft && !deleteTarget && <Banner status="error" title={error} />}
+        <div className="astryx-todos__columns">
+          {groups.map(({ title, items, done, variant }) => (
             <section className="astryx-todos__section" key={title} aria-label={title}>
               <HStack gap={2} vAlign="center">
-                <span aria-hidden="true"><StatusDot label={title} variant={done ? 'success' : 'neutral'} /></span>
+                <span aria-hidden="true"><StatusDot label={title} variant={variant} /></span>
                 <Heading level={4} accessibilityLevel={2}>{title}</Heading>
-                <Badge label={items.length} variant={done ? 'green' : 'neutral'} />
+                <Badge label={items.length} variant={done ? 'green' : variant === 'error' ? 'error' : 'neutral'} />
               </HStack>
               {items.length ? <div className="todo-grid">
                 {items.map((item) => <ClickableCard key={item.id} padding={3} className="astryx-todos__card" label={`查看详情 ${item.title}`} onClick={() => onOpenDetails(item.id)}>
@@ -120,16 +124,16 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
               </div> : <EmptyState isCompact title={query ? '暂无匹配的待办事项' : `暂无${title}的待办事项`} />}
             </section>
           ))}
-        </VStack>
+        </div>
       </LayoutContent>}
     />
-    {draft && <WorkspaceDialog title={draft.id ? '编辑待办' : '新增待办'} onClose={() => setDraft(null)}>
+    {draft && <WorkspaceDialog title={draft.id ? '编辑待办' : '新增待办'} onClose={() => setDraft(null)} className="todo-dialog">
       <form className="app-dialog-form" onSubmit={save}>
         <VStack gap={3}>
           <TextInput ref={titleInput} label="标题" isRequired hasAutoFocus value={draft.title} onChange={(title) => setDraft({ ...draft, title })} />
           <DateTimeInput label="完成时间" isRequired hourFormat="24h" weekStartsOn="mon" width="100%" value={draft.dueAt}
             onChange={(dueAt) => setDraft({ ...draft, dueAt })} onEntryErrorChange={(entryError) => setDateInvalid(Boolean(entryError))} />
-          <TextArea label="内容" rows={4} value={draft.content} onChange={(content) => setDraft({ ...draft, content })} />
+          <RichTextField label="内容" value={draft.content} placeholder="补充待办内容" onChange={(content) => setDraft({ ...draft, content })} />
           {error && <Banner status="error" title={error} />}
         </VStack>
         <HStack gap={2} hAlign="end" wrap="wrap">

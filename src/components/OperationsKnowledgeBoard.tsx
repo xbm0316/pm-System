@@ -5,10 +5,8 @@ import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import { EmptyState } from '@astryxdesign/core/EmptyState'
 import { Icon } from '@astryxdesign/core/Icon'
 import { IconButton } from '@astryxdesign/core/IconButton'
-import { InfoTip } from '@astryxdesign/core/InfoTip'
 import { HStack, Layout, LayoutContent, LayoutHeader, VStack } from '@astryxdesign/core/Layout'
 import { Link } from '@astryxdesign/core/Link'
-import { MoreMenu } from '@astryxdesign/core/MoreMenu'
 import { Selector } from '@astryxdesign/core/Selector'
 import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { Heading, Text } from '@astryxdesign/core/Text'
@@ -231,20 +229,21 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
             {knowledgeTypes.map((type, index) => {
               const cards = cardsByType.get(type.id) ?? []
               const isDropTarget = dropColumn === type.id
-              return <section key={type.id} className="knowledge-kanban__lane" aria-label={type.title} data-type-id={type.id} data-drop-target={isDropTarget || undefined}>
+              return <section key={type.id} className="knowledge-kanban__lane" aria-label={type.title} data-type-id={type.id} data-type-color={columnColor(type.color, index)} data-drop-target={isDropTarget || undefined}>
                 <Card variant="muted" padding={0} className="knowledge-kanban__lane-surface">
                   <Layout height="fill"
                     header={<LayoutHeader hasDivider padding={3}>
                       <div className="knowledge-kanban__lane-heading">
                         <span aria-hidden="true"><StatusDot variant={columnColor(type.color, index)} label="类型颜色" /></span>
                         <Heading level={4} accessibilityLevel={2}>{type.title}</Heading>
-                        {type.description && <InfoTip label={`关于${type.title}`} content={type.description} />}
                         <Text type="supporting" color="secondary" hasTabularNumbers>{cards.length}</Text>
-                        <IconButton size="sm" variant="ghost" label={`在${type.title}中新增资料`} icon={<WorkspaceIcon name="plus" size={15} />} onClick={() => addCard(type.id)} />
-                        <MoreMenu label={`${type.title}操作`} size="sm" items={[
-                          { label: '编辑类型', onClick: () => setTypeDraft({ ...type, color: columnColor(type.color, index) }) },
-                          { label: '删除类型', isDisabled: knowledgeTypes.length <= 1, onClick: () => setDeletion({ kind: 'type', id: type.id, name: type.title }) },
-                        ]} />
+                        <div className="knowledge-kanban__lane-actions" onClick={(event) => event.stopPropagation()}>
+                          <IconButton size="sm" variant="ghost" className="knowledge-kanban__add-action" label={`在${type.title}中新增资料`} icon={<WorkspaceIcon name="plus" size={15} />} onClick={() => addCard(type.id)} />
+                          <div className="knowledge-kanban__lane-actions-secondary">
+                            <IconButton label={`编辑类型 ${type.title}`} variant="ghost" size="sm" icon={<WorkspaceIcon name="edit" size={14} />} onClick={() => setTypeDraft({ ...type, color: columnColor(type.color, index) })} />
+                            <IconButton label={`删除类型 ${type.title}`} variant="ghost" size="sm" className="knowledge-kanban__delete-action" isDisabled={knowledgeTypes.length <= 1} icon={<WorkspaceIcon name="trash" size={14} />} onClick={() => setDeletion({ kind: 'type', id: type.id, name: type.title })} />
+                          </div>
+                        </div>
                       </div>
                     </LayoutHeader>}
                     content={<LayoutContent padding={2}>
@@ -266,12 +265,10 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
                               <VStack gap={2}>
                                 <HStack hAlign="between" vAlign="start">
                                   <Badge label={account ? '账号' : '教程'} variant={account ? 'teal' : 'neutral'} />
-                                  <MoreMenu label={`${card.title}操作`} size="sm" items={[
-                                    { label: '编辑资料', onClick: () => openCard(card) },
-                                    ...knowledgeTypes.filter((target) => target.id !== type.id).map((target) => ({ label: `移到${target.title}`, onClick: () => moveCard(card.id, target.id) })),
-                                    { type: 'divider' },
-                                    { label: '删除资料', onClick: () => setDeletion({ kind: 'card', id: card.id, name: card.title }) },
-                                  ]} />
+                                  <div className="knowledge-kanban__card-actions" onClick={(event) => event.stopPropagation()}>
+                                    <IconButton label={`编辑资料 ${card.title}`} variant="ghost" size="sm" icon={<WorkspaceIcon name="edit" size={14} />} onClick={() => openCard(card)} />
+                                    <IconButton label={`删除资料 ${card.title}`} variant="ghost" size="sm" className="knowledge-kanban__delete-action" icon={<WorkspaceIcon name="trash" size={14} />} onClick={() => setDeletion({ kind: 'card', id: card.id, name: card.title })} />
+                                  </div>
                                 </HStack>
                                 <VStack gap={1}>
                                   <Heading level={4} accessibilityLevel={3}>{card.title}</Heading>

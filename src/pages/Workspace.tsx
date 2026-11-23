@@ -7,6 +7,7 @@ import ProjectManagerBoard from '../components/ProjectManagerBoard'
 import OperationsWorkspace from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
 import TodoWorkspace, { TodoDetailDialog } from '../components/TodoWorkspace'
+import { WorkspaceOverlay } from '../components/WorkspaceDialog'
 import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
 import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, updateCompetitor, deleteCompetitorRow, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
@@ -169,7 +170,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     if (detailTarget) {
       const target = requirements.find((item) => item.id === detailTarget)
       if (!target) return null
-      return <RequirementDetailPage requirement={target} requirements={requirements} competitors={competitors} onStatusChange={updateReqStatus} onUpdateAttachments={updateRequirementFiles} onUpdateRequirement={updateRequirementFields} onClose={() => setDetailTarget(null)} />
+      return <WorkspaceOverlay label={`需求详情：${target.name}`} onClose={() => setDetailTarget(null)}><div className="requirement-detail-modal-shell"><RequirementDetailPage requirement={target} requirements={requirements} competitors={competitors} onStatusChange={updateReqStatus} onUpdateAttachments={updateRequirementFiles} onUpdateRequirement={updateRequirementFields} onClose={() => setDetailTarget(null)} /></div></WorkspaceOverlay>
     }
     if (activeMenu === 'req') return <ReqPool spaceId={space.id} requirements={requirements} competitors={competitors} activeReqId={detailTarget} onAdd={addRequirement} onOpenTrack={setDetailTarget} onDelete={deleteRequirement} openSignal={addSignal.req || 0} searchQuery={searchQuery} />
     if (activeMenu === 'comp') return <CompAnalysis spaceId={space.id} competitors={competitors} onAdd={addCompetitor} onUpdate={updateCompetitorFields} onDelete={deleteCompetitor} openSignal={addSignal.comp || 0} searchQuery={searchQuery} />

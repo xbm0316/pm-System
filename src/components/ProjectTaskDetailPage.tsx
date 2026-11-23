@@ -6,12 +6,14 @@ import WorkspaceDialog, { WorkspaceOverlay } from './WorkspaceDialog'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/Layout'
+import { Tab, TabList } from '@astryxdesign/core/TabList'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
+import PriorityBadge from './PriorityBadge'
 import DatePicker from './DatePicker'
 import DateRangeField from './DateRangeField'
 import { TASK_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type TaskStatus } from '../lib/store'
@@ -134,19 +136,21 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
             <div className="requirement-detail-page__eyebrow">任务详情</div>
             <h1>
               <span className="project-task-detail-page__name">{task.name}</span>
-              <span className={`pri pri--${task.priority.toLowerCase()}`}>{task.priority}</span>
+              <PriorityBadge priority={task.priority} />
             </h1>
           </div>
         </div>
-        <div className="requirement-detail-page__tabs" role="tablist" aria-label="任务详情模块">
-          <button type="button" role="tab" aria-selected={tab === 'content'} className={`detail-tab${tab === 'content' ? ' detail-tab--active' : ''}`} onClick={() => setTab('content')}>任务内容</button>
-          <button type="button" role="tab" aria-selected={tab === 'issues'} className={`detail-tab${tab === 'issues' ? ' detail-tab--active' : ''}`} onClick={() => setTab('issues')}>问题台账</button>
+        <div className="requirement-detail-page__tabs">
+          <TabList value={tab} onChange={(value) => setTab(value as TaskTab)} role="tablist" hasDivider>
+            <Tab value="content" label="任务内容" panelId="task-content-panel" />
+            <Tab value="issues" label="问题台账" panelId="task-issues-panel" />
+          </TabList>
         </div>
       </header>
 
       <main className="requirement-detail-page__body" ref={bodyRef}>
         {tab === 'content' && (
-          <div className="project-task-content">
+          <div className="project-task-content" id="task-content-panel" role="tabpanel" aria-label="任务内容">
             <div className="project-task-content__toolbar">
               {!editing ? <IconButton label="编辑任务" variant="ghost" size="sm" icon={<Icon name="edit" size={15} />} type="button" onClick={() => setEditing(true)} /> : <><IconButton label="保存任务" variant="ghost" size="sm" icon={<Icon name="check" size={15} />} type="button" onClick={saveTask} /><IconButton label="取消编辑" variant="ghost" size="sm" icon={<Icon name="close" size={15} />} type="button" onClick={cancelEditing} /></>}
             </div>
@@ -201,7 +205,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
         )}
 
         {tab === 'issues' && (
-          <div className="project-issues">
+          <div className="project-issues" id="task-issues-panel" role="tabpanel" aria-label="问题台账">
             <section className="project-task-section">
               <div className="project-task-section__label">问题台账</div>
               <div className="project-issue-form">

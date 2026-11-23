@@ -5239,7 +5239,7 @@ body {
 
 /* 复盘与知识库：按项目工作台状态分组呈现多个类型 */
 .collection-page--board { padding: 10px 12px 16px; }
-.collection-board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex: 0 0 auto; padding: 3px 4px 14px; }
+.collection-board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex: 0 0 auto; padding: 3px 4px 4px; }
 .collection-board-title { color: var(--text); font-family: var(--font-serif); font-size: 18px; font-weight: 650; }
 .collection-board-scroll { display: flex; align-items: stretch; gap: 14px; min-height: 0; height: 100%; overflow-x: auto; overflow-y: hidden; padding: 3px 4px 10px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .collection-column { display: flex; flex: 0 0 calc((100% - 56px) / 5); min-width: 230px; min-height: 0; height: 100%; scroll-snap-align: start; overflow: hidden; }
@@ -5635,6 +5635,16 @@ body {
 .meeting-card__empty-note { width: fit-content; padding: 2px 5px; border-radius: 6px; cursor: text; }
 .meeting-card__empty-note:hover, .meeting-card__empty-note:focus-visible { color: var(--primary); background: var(--primary-soft); outline: 0; }
 .meeting-card__links { margin-top: 12px; color: var(--primary); font-size: 11px; font-weight: 700; }
+.meeting-grid.collection-board-scroll { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-content: start; overflow-x: hidden; overflow-y: auto; }
+.meeting-card-wrap { position: relative; min-width: 0; }
+.meeting-card-wrap .meeting-card { height: 100%; padding-bottom: 46px; }
+.meeting-card__actions { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; opacity: 0; pointer-events: none; transform: translateY(4px); transition: opacity .18s ease, transform .18s ease; }
+.meeting-card-wrap:hover .meeting-card__actions,
+.meeting-card-wrap:focus-within .meeting-card__actions { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.meeting-card__actions button { display: grid; place-items: center; width: 25px; height: 25px; padding: 0; border: 1px solid var(--glass-border); border-radius: 50%; color: var(--text-3); background: var(--glass-bg-strong); cursor: pointer; }
+.meeting-card__actions button:hover, .meeting-card__actions button:focus-visible { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); outline: 0; }
+.meeting-card__actions button:last-child { color: var(--color-text-error); border-color: var(--color-border-red); }
+.meeting-card__actions button:last-child:hover, .meeting-card__actions button:last-child:focus-visible { color: var(--color-text-error); border-color: var(--color-border-red); background: var(--color-background-red); }
 .meeting-empty { grid-column: 1 / -1; padding: 56px 20px; text-align: center; color: var(--text-3); }
 .meeting-task-select { min-height: 112px; padding: 8px; }
 .meeting-task-select option { padding: 7px 8px; border-radius: 7px; }
@@ -5647,6 +5657,9 @@ body {
 .topbar__reminder-item:hover, .topbar__reminder-item:focus-visible { border-color: var(--primary); outline: 0; }
 .topbar__reminder-item small { color: var(--text-3); font-size: 10px; }
 @media (max-width: 560px) { .topbar__popover { right: -8px; width: min(320px, calc(100vw - 24px)); max-width: calc(100vw - 24px); } }
+@media (max-width: 1100px) { .meeting-grid.collection-board-scroll { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 860px) { .meeting-grid.collection-board-scroll { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .meeting-grid.collection-board-scroll { grid-template-columns: repeat(2, minmax(0, 1fr)); } .meeting-toolbar__actions { flex-wrap: wrap; } }
 .date-range-picker { position: relative; }
 .date-range-picker__trigger { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; max-width: 310px; padding: 0 11px; border: 1px solid var(--glass-border); border-radius: 11px; background: var(--glass-bg); color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
 .date-range-picker__trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6701,6 +6714,27 @@ body {
 
 .knowledge-kanban__lane-heading h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .knowledge-kanban__lane-heading > :not(h2) { flex-shrink: 0; }
+.knowledge-kanban__lane-actions,
+.knowledge-kanban__card-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.knowledge-kanban__lane-actions { margin-inline-start: auto; gap: 6px; }
+.knowledge-kanban__lane-actions-secondary { display: inline-flex; align-items: center; gap: 6px; }
+.knowledge-kanban__lane-actions .astryx-icon-button,
+.knowledge-kanban__card-actions .astryx-icon-button { color: var(--type-accent, var(--color-text-secondary)); }
+.knowledge-kanban__add-action { color: var(--type-accent, var(--color-text-secondary)); }
+.knowledge-kanban__add-action:hover,
+.knowledge-kanban__add-action:focus-visible { color: var(--type-accent, var(--color-text-primary)); background: var(--type-soft, var(--color-background-gray)); }
+.knowledge-kanban__lane-actions .astryx-icon-button:hover,
+.knowledge-kanban__lane-actions .astryx-icon-button:focus-visible,
+.knowledge-kanban__card-actions .astryx-icon-button:hover,
+.knowledge-kanban__card-actions .astryx-icon-button:focus-visible { color: var(--type-accent, var(--color-text-primary)); background: var(--type-soft, var(--color-background-gray)); }
+.knowledge-kanban__delete-action { color: var(--color-text-error) !important; }
+.knowledge-kanban__delete-action:hover,
+.knowledge-kanban__delete-action:focus-visible { color: var(--color-text-error) !important; background: var(--color-background-red) !important; }
+.knowledge-kanban__lane[data-type-color="neutral"] { --type-accent: var(--color-text-secondary); --type-soft: var(--color-background-gray); }
+.knowledge-kanban__lane[data-type-color="accent"] { --type-accent: var(--color-text-blue); --type-soft: var(--color-background-blue); }
+.knowledge-kanban__lane[data-type-color="warning"] { --type-accent: var(--color-text-yellow); --type-soft: var(--color-background-yellow); }
+.knowledge-kanban__lane[data-type-color="success"] { --type-accent: var(--color-text-green); --type-soft: var(--color-background-green); }
+.knowledge-kanban__lane[data-type-color="error"] { --type-accent: var(--color-text-red); --type-soft: var(--color-background-red); }
 .knowledge-kanban__card { cursor: grab; min-width: 0; overflow-wrap: anywhere; }
 .knowledge-kanban__card:active { cursor: grabbing; }
 .knowledge-kanban__card[data-dragged] { opacity: .55; user-select: none; }

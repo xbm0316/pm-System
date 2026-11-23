@@ -6,11 +6,16 @@ import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import BoardLaneHeading from './BoardLaneHeading'
 import { WorkspaceOverlay } from './WorkspaceDialog'
 import { Card } from '@astryxdesign/core/Card'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { Layout, LayoutContent, LayoutHeader } from '@astryxdesign/core/Layout'
 import { Button } from '@astryxdesign/core/Button'
+import { IconButton } from '@astryxdesign/core/IconButton'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react'
 import Icon from './Icon'
+import RichTextField from './RichTextField'
+import PriorityBadge from './PriorityBadge'
 import DatePicker from './DatePicker'
 import CompetitorMultiSelect from './CompetitorMultiSelect'
 import {
@@ -149,13 +154,11 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
 
   return (
     <Card padding={0} variant="muted" className={`status-group status-group--${status === '调研中' ? 'research' : status === '已评审' ? 'reviewed' : status === '开发中' ? 'development' : status === '测试中' ? 'testing' : 'live'}`}>
-      <div className="status-group__head">
-        <BoardLaneHeading name={status} count={items.length} variant={status === '调研中' ? 'neutral' : status === '测试中' ? 'warning' : status === '已上线' ? 'success' : 'accent'} />
-      </div>
-      <div className="status-group__body-shell">
+      <Layout height="fill" header={<LayoutHeader hasDivider padding={3}><BoardLaneHeading name={status} count={items.length} variant={status === '调研中' ? 'neutral' : status === '测试中' ? 'warning' : status === '已上线' ? 'success' : 'accent'} /></LayoutHeader>} content={<LayoutContent padding={2}>
+        <div className="status-group__body-shell">
         <div className="status-group__body" ref={bodyRef}>
           {items.length === 0 ? (
-            <div className="status-group__empty">暂无需求</div>
+            <EmptyState isCompact title="暂无需求" />
           ) : items.map((r) => (
             <div className="req-card-wrap" key={r.id}>
               <ClickableCard label={`${r.name}，查看需求追踪`} padding={0}
@@ -164,24 +167,22 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
               >
                 <div className="req-card__top">
                   <span className="req-card__ver">{r.version}</span>
-                  <span className={`pri pri--${r.priority.toLowerCase()}`}>{r.priority}</span>
+                  <PriorityBadge priority={r.priority} />
                 </div>
                 <div className="req-card__name">{r.name}</div>
                 {r.content && <div className="req-card__content">{r.content}</div>}
               </ClickableCard>
               <div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}>
-                <button type="button" className="req-card__add" onClick={() => onAddChild(r.version)} title={`基于 ${r.version} 新增需求`} aria-label={`基于 ${r.version} 新增需求`}>
-                  <Icon name="plus" size={14} />
-                </button>
-                <button type="button" className="req-card__delete" onClick={() => onRequestDelete(r)} title={`删除 ${r.name}`} aria-label={`删除 ${r.name}`}>
-                  <span className="icon-circle"><Icon name="trash" size={13} /></span>
-                </button>
+                <IconButton label={`基于 ${r.version} 新增需求`} variant="ghost" size="sm" className="req-card__add" icon={<Icon name="plus" size={14} />} type="button" onClick={() => onAddChild(r.version)} />
+                <IconButton label={`编辑 ${r.name}`} variant="ghost" size="sm" className="req-card__edit" icon={<Icon name="edit" size={13} />} type="button" onClick={() => onOpenTrack(r.id)} />
+                <IconButton label={`删除 ${r.name}`} variant="ghost" size="sm" className="req-card__delete" icon={<Icon name="trash" size={13} />} type="button" onClick={() => onRequestDelete(r)} />
               </div>
             </div>
           ))}
         </div>
         <MiniScrollbar viewportRef={bodyRef} orientation="vertical" />
       </div>
+      </LayoutContent>} />
     </Card>
   )
 }
@@ -352,7 +353,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
             <div className="field-label" style={{ marginTop: 16 }}>
               需求内容
             </div>
-            <TextArea label="需求内容" isLabelHidden width="100%" rows={4} value={content} placeholder="背景、目标、验收标准…" onChange={setContent} />
+            <RichTextField label="需求内容" value={content} placeholder="背景、目标、验收标准…" onChange={setContent} />
 
             <div className="requirement-create-inline-fields">
               <div><div className="field-label" style={{ marginTop: 16 }}>预计上线时间</div><DatePicker value={launchDate.slice(0, 10)} onChange={setLaunchDate} label="预计上线日期" /></div>

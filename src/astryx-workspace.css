@@ -238,11 +238,461 @@ html[data-astryx-theme] .btn-primary--danger { background: var(--color-backgroun
 }
 
 .astryx-todos { padding: 0; }
-.astryx-todos__section { display: grid; gap: var(--spacing-3); }
+.astryx-todos__columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-4); height: 100%; min-height: 0; }
+.astryx-todos__section { display: flex; flex-direction: column; gap: var(--spacing-3); min-width: 0; min-height: 0; padding: var(--spacing-3); border: 1px solid var(--color-border); border-radius: var(--radius-container); background: var(--color-background-muted); }
 .astryx-todos__card { min-width: 0; overflow-wrap: anywhere; }
+.astryx-todos__section .todo-grid { flex: 1 1 auto; min-height: 0; grid-template-columns: 1fr; align-content: start; overflow-y: auto; }
+.astryx-todos__section > .astryx-empty-state { flex: 1 1 auto; }
+
+@media (max-width: 599px) {
+  .astryx-todos__columns { grid-template-columns: 1fr; height: auto; overflow-y: auto; }
+  .astryx-todos__section { min-height: 280px; }
+}
+
+.astryx-rich-text-field { display: grid; gap: var(--spacing-2); min-width: 0; }
+.astryx-rich-text-field__label { color: var(--color-text-secondary); font-size: var(--text-label-size); line-height: var(--text-label-leading); }
+.astryx-rich-text-field__surface { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-container); background: var(--color-background-card); }
+.astryx-rich-text-field__toolbar { display: flex; align-items: center; gap: var(--spacing-1); padding: var(--spacing-1); border-bottom: 1px solid var(--color-border); background: var(--color-background-muted); }
+.astryx-rich-text-field__editor { padding: var(--spacing-3); color: var(--color-text-primary); font: var(--text-body-size)/var(--text-body-leading) var(--font-family-body); outline: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.astryx-rich-text-field__editor:focus { box-shadow: inset 0 0 0 2px var(--color-border-blue); }
+.astryx-rich-text-field__editor:empty::before { color: var(--color-text-tertiary); content: attr(data-placeholder); pointer-events: none; }
+.astryx-rich-text-field__editor p { margin: 0 0 var(--spacing-2); }
+.astryx-rich-text-field__editor ul, .astryx-rich-text-field__editor ol { margin: var(--spacing-2) 0; padding-inline-start: var(--spacing-5); }
 .todo-details { display: grid; gap: var(--spacing-3); }
 .todo-details dt { color: var(--color-text-secondary); }
 .todo-details dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 html[data-astryx-theme] .app-dialog-surface { background: transparent; border: 0; box-shadow: none; }
 .app-dialog-surface > .modal { max-width: calc(100vw - 2 * var(--spacing-4)); margin: 0; }
+.todo-dialog .astryx-dialog-header-title-block { margin-inline-start: 0; }
+.summary-drawer { display: grid; gap: var(--spacing-4); padding: var(--spacing-4); overflow-y: auto; }
+.summary-drawer .summary-list { max-height: none; }
+
+/* 项目经理工作台：动作固定在右侧，状态列沿用官方 kanban 的固定列宽与横向滚动。 */
+.project-manager__head { display: flex; align-items: center; gap: var(--spacing-3); }
+.project-manager__tabs { flex: 1 1 auto; width: auto; min-width: 0; }
+.project-manager__tabs { position: relative; }
+.project-manager__tabs .astryx-tab-list { width: fit-content; max-width: 100%; }
+.project-manager__tabs .astryx-tab-strip { width: auto; }
+.project-manager__tabs .astryx-tab-indicator { inset-inline-start: var(--spacing-3); inset-inline-end: var(--spacing-3); }
+.project-manager__actions { display: inline-flex; align-items: center; gap: var(--spacing-2); margin-inline-start: auto; }
+.project-manager__actions .astryx-icon-button { flex: 0 0 auto; }
+.project-tab__inline-actions { display: inline-flex; align-items: center; gap: var(--spacing-1); margin-inline-start: var(--spacing-2); }
+.project-tab__inline-action { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-element); color: var(--color-text-secondary); background: var(--color-background-card); cursor: pointer; }
+.project-tab__inline-action:hover, .project-tab__inline-action:focus-visible { border-color: var(--color-border-blue); color: var(--color-text-blue); background: var(--color-background-blue); outline: 0; }
+.project-tab__inline-action--delete:hover, .project-tab__inline-action--delete:focus-visible { border-color: var(--color-border-red); color: var(--color-text-red); background: var(--color-background-red); }
+.project-tab__inline-expand { display: inline-grid; place-items: center; width: 20px; height: 20px; color: var(--color-text-secondary); cursor: pointer; }
+.project-tab__inline-expand--open { color: var(--color-text-blue); transform: rotate(90deg); }
+.collection-page--board > .astryx-layout { flex: 1 1 auto; min-height: 0; }
+.collection-page--board .collection-board-toolbar { border-bottom: 0; }
+.project-task-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-4); overflow-x: hidden; }
+.project-task-groups > .status-group { width: auto; min-width: 0; flex: none; }
+
+/* 需求池和项目工作台的业务卡片使用与官方 Kanban 模板一致的字体层级。 */
+html[data-astryx-theme] :is(.req-pool-shell, .project-task-groups) {
+  font-family: var(--font-family-body);
+}
+html[data-astryx-theme] :is(.req-pool-shell, .project-task-groups) .req-card__ver {
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-xs);
+  line-height: var(--text-body-leading);
+  color: var(--color-text-secondary);
+}
+html[data-astryx-theme] :is(.req-pool-shell, .project-task-groups) .req-card__name {
+  font-family: var(--font-family-body);
+  font-size: var(--text-heading-4-size);
+  font-weight: var(--text-heading-4-weight);
+  line-height: var(--text-heading-4-leading);
+  color: var(--color-text-primary);
+}
+html[data-astryx-theme] :is(.req-pool-shell, .project-task-groups) .req-card__content {
+  font-family: var(--font-family-body);
+  font-size: var(--text-supporting-size);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-supporting-leading);
+  color: var(--color-text-secondary);
+}
+
+/* 官方 TabList 负责选中态和键盘导航，业务操作保持在右侧工具栏。 */
+.project-manager__tabs > nav,
+.requirement-detail-page__tabs > nav { max-width: 100%; }
+.project-manager__tabs .astryx-tab-list,
+.requirement-detail-page__tabs .astryx-tab-list { min-width: 0; }
+.project-children-popover { left: 0; }
+
+/* 官方 kanban 模板的列结构：列面板填满可用高度，内容区独立滚动。 */
+.collection-page--board .collection-column,
+.project-task-groups > .status-group,
+.req-pool-shell .status-group {
+  min-height: 0;
+  overflow: hidden;
+}
+.collection-page--board .collection-column > .astryx-layout,
+.project-task-groups > .status-group > .astryx-layout,
+.req-pool-shell .status-group > .astryx-layout { height: 100%; min-height: 0; }
+.collection-page--board .collection-column .collection-column__cards,
+.project-task-groups .status-group__body,
+.req-pool-shell .status-group__body { min-height: 0; }
+
+/* 官方 kanban 模板默认使用固定列宽并允许横向滚动。 */
+.project-task-groups {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.project-task-groups > .status-group {
+  flex: 0 0 300px;
+  width: 300px;
+}
+.collection-board-scroll .collection-column {
+  flex: 0 0 300px;
+  width: 300px;
+}
+.collection-page--board .collection-board-scroll {
+  gap: var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-4) var(--spacing-4);
+}
+
+/* 看板卡片操作收进卡片右下角，避免悬浮在列外。 */
+.project-task-card-wrap .req-card__bottom-actions,
+.collection-board-card-wrap .collection-card__actions {
+  left: auto;
+  right: 10px;
+  bottom: 10px;
+  width: auto;
+  justify-content: flex-end;
+}
+.req-pool-shell .req-card__bottom-actions {
+  left: auto;
+  right: 10px;
+  bottom: 10px;
+  width: auto;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.req-card__bottom-actions,
+.meeting-card__actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.req-card__bottom-actions .req-card__add,
+.req-card__bottom-actions .req-card__delete {
+  position: static;
+  left: auto;
+  bottom: auto;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+  border-radius: var(--radius-element);
+}
+.req-card__bottom-actions .req-card__add {
+  border: 1px solid var(--color-border-blue);
+  color: var(--color-text-blue);
+  background: var(--color-background-blue);
+}
+.req-card__bottom-actions .req-card__add:hover,
+.req-card__bottom-actions .req-card__add:focus-visible {
+  border-color: var(--color-border-blue);
+  color: var(--color-text-blue);
+  background: var(--color-background-blue);
+}
+.status-group .req-card__bottom-actions .req-card__add,
+.status-group .req-card__bottom-actions .req-card__edit {
+  border-color: color-mix(in srgb, var(--status-accent, var(--color-text-blue)) 52%, var(--color-border));
+  color: var(--status-accent, var(--color-text-blue));
+  background: var(--status-soft, var(--color-background-blue));
+}
+.status-group .req-card__bottom-actions .req-card__add:hover,
+.status-group .req-card__bottom-actions .req-card__add:focus-visible,
+.status-group .req-card__bottom-actions .req-card__edit:hover,
+.status-group .req-card__bottom-actions .req-card__edit:focus-visible {
+  border-color: var(--status-accent, var(--color-text-blue));
+  color: var(--status-accent, var(--color-text-blue));
+  background: var(--status-soft, var(--color-background-blue));
+}
+.status-group .req-card__bottom-actions .req-card__delete {
+  border-color: color-mix(in srgb, var(--status-accent, var(--color-text-blue)) 52%, var(--color-border));
+  color: var(--status-accent, var(--color-text-blue));
+  background: var(--status-soft, var(--color-background-blue));
+}
+.status-group .req-card__bottom-actions .req-card__delete:hover,
+.status-group .req-card__bottom-actions .req-card__delete:focus-visible,
+.status-group .req-card__bottom-actions .req-card__delete:hover .icon-circle,
+.status-group .req-card__bottom-actions .req-card__delete:focus-visible .icon-circle {
+  border-color: var(--status-accent, var(--color-text-blue));
+  color: var(--status-accent, var(--color-text-blue));
+  background: var(--status-soft, var(--color-background-blue));
+}
+
+/* 需求池和项目工作台卡片操作使用官方纯图标样式。 */
+.req-pool-shell .req-card__bottom-actions .req-card__add,
+.req-pool-shell .req-card__bottom-actions .req-card__edit,
+.req-pool-shell .req-card__bottom-actions .req-card__delete,
+.project-task-card-wrap .req-card__bottom-actions .req-card__add,
+.project-task-card-wrap .req-card__bottom-actions .req-card__edit,
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--status-accent, var(--color-text-secondary));
+}
+.req-pool-shell .req-card__bottom-actions .req-card__add:hover,
+.req-pool-shell .req-card__bottom-actions .req-card__add:focus-visible,
+.req-pool-shell .req-card__bottom-actions .req-card__edit:hover,
+.req-pool-shell .req-card__bottom-actions .req-card__edit:focus-visible,
+.req-pool-shell .req-card__bottom-actions .req-card__delete:hover,
+.req-pool-shell .req-card__bottom-actions .req-card__delete:focus-visible,
+.project-task-card-wrap .req-card__bottom-actions .req-card__add:hover,
+.project-task-card-wrap .req-card__bottom-actions .req-card__add:focus-visible,
+.project-task-card-wrap .req-card__bottom-actions .req-card__edit:hover,
+.project-task-card-wrap .req-card__bottom-actions .req-card__edit:focus-visible,
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete:hover,
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete:focus-visible {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--status-accent, var(--color-text-primary));
+}
+.req-pool-shell .req-card__bottom-actions > button,
+.project-task-card-wrap .req-card__bottom-actions > button {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--status-accent, var(--color-text-secondary)) !important;
+}
+.req-pool-shell .req-card__bottom-actions > button:hover,
+.req-pool-shell .req-card__bottom-actions > button:focus-visible,
+.project-task-card-wrap .req-card__bottom-actions > button:hover,
+.project-task-card-wrap .req-card__bottom-actions > button:focus-visible {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--status-accent, var(--color-text-primary)) !important;
+}
+
+/* 操作图标颜色与各列标题左侧 StatusDot 使用同一组官方颜色。 */
+.req-pool-shell .status-group--research,
+.project-task-groups .status-group--research { --status-accent: var(--color-icon-secondary); --status-soft: var(--color-background-gray); }
+.req-pool-shell .status-group--reviewed,
+.req-pool-shell .status-group--development,
+.project-task-groups .status-group--development { --status-accent: var(--color-accent); --status-soft: var(--color-background-blue); }
+.req-pool-shell .status-group--testing { --status-accent: var(--color-icon-warning); --status-soft: var(--color-background-yellow); }
+.req-pool-shell .status-group--live,
+.project-task-groups .status-group--complete { --status-accent: var(--color-icon-success); --status-soft: var(--color-background-green); }
+.req-pool-shell .req-card,
+.project-task-card-wrap .req-card,
+.collection-board-card-wrap .req-card { padding-bottom: 48px; }
+.requirement-detail-modal-shell {
+  width: min(1080px, calc(100vw - 32px));
+  max-height: min(92dvh, 900px);
+  overflow: auto;
+  border-radius: var(--radius-container);
+  background: var(--color-background-surface);
+}
+.requirement-detail-modal-shell .requirement-detail-page { min-height: min(820px, 88dvh); }
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete,
+.collection-board-card-wrap .collection-card__actions .req-card__delete {
+  background: var(--color-background-card);
+  border-color: var(--color-border);
+}
+.collection-board-card-wrap .collection-card__actions .req-card__delete:first-child {
+  color: var(--status-accent, var(--color-text-blue));
+  border-color: color-mix(in srgb, var(--status-accent, var(--color-text-blue)) 52%, var(--color-border));
+  background: var(--status-soft, var(--color-background-blue));
+}
+.collection-board-card-wrap .collection-card__actions .req-card__delete:last-child {
+  color: var(--color-text-error);
+  border-color: var(--color-border-red);
+  background: var(--color-background-card);
+}
+.project-task-card-wrap .req-card,
+.collection-board-card-wrap .req-card { padding-bottom: 42px; }
+
+.project-task-card-wrap .req-card__edit {
+  color: var(--status-accent, var(--color-text-blue));
+  border: 1px solid color-mix(in srgb, var(--status-accent, var(--color-text-blue)) 52%, var(--color-border));
+  background: var(--color-background-card);
+}
+.project-task-card-wrap .req-card__edit:hover,
+.project-task-card-wrap .req-card__edit:focus-visible {
+  color: var(--status-accent, var(--color-text-blue));
+  border-color: var(--status-accent, var(--color-text-blue));
+  background: var(--status-soft, var(--color-background-blue));
+}
+
+/* 所有看板卡片使用同一套垂直节奏，并避免旧 margin 与列 gap 叠加。 */
+.project-task-groups .status-group__body,
+.collection-page--board .collection-column__cards,
+.req-pool-shell .status-group__body { gap: var(--spacing-3); }
+.project-task-card-wrap,
+.collection-board-card-wrap,
+.req-pool-shell .req-card-wrap { margin-bottom: 0; }
+
+/* 悬停操作保持在官方浅色背景上，删除图标使用清晰的错误色。 */
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete,
+.collection-board-card-wrap .collection-card__actions .req-card__delete:last-child,
+.req-pool-shell .req-card__bottom-actions .req-card__delete {
+  color: var(--color-text-error);
+  border: 1px solid var(--color-border-red);
+  background: var(--color-background-card);
+}
+.collection-board-card-wrap .collection-card__actions .req-card__delete:first-child {
+  color: var(--color-text-blue);
+  border: 1px solid var(--color-border-blue);
+  background: var(--color-background-card);
+}
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete:hover .icon-circle,
+.project-task-card-wrap .req-card__bottom-actions .req-card__delete:focus-visible .icon-circle,
+.collection-board-card-wrap .collection-card__actions .req-card__delete:last-child:hover .icon-circle,
+.collection-board-card-wrap .collection-card__actions .req-card__delete:last-child:focus-visible .icon-circle,
+.req-pool-shell .req-card__bottom-actions .req-card__delete:hover .icon-circle,
+.req-pool-shell .req-card__bottom-actions .req-card__delete:focus-visible .icon-circle {
+  color: var(--color-text-error);
+  border-color: var(--color-border-red);
+  background: var(--color-background-red);
+}
+.collection-board-card-wrap .collection-card__actions .req-card__delete:first-child:hover .icon-circle,
+.collection-board-card-wrap .collection-card__actions .req-card__delete:first-child:focus-visible .icon-circle {
+  color: var(--color-text-blue);
+  border-color: var(--color-border-blue);
+  background: var(--color-background-blue);
+}
+
+/* NumberInput 自带边框，避免旧 input 规则造成双层边框。 */
+.progress-percent-field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.progress-percent-field > .astryx-field {
+  width: 120px;
+  flex: 0 0 120px;
+}
+.progress-percent-field input {
+  width: auto;
+  padding: revert;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Dialog 和旧业务 overlay 使用同一套标题基线。 */
+html[data-astryx-theme] .astryx-dialog-header { padding-block: var(--spacing-2) var(--spacing-4); }
+html[data-astryx-theme] .astryx-dialog-header-title-block { margin-inline-start: 0; }
+html[data-astryx-theme] .modal > .modal__title:first-child {
+  margin: 0 0 var(--spacing-4);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-heading);
+}
+html[data-astryx-theme] .modal__title-row { margin-block-end: var(--spacing-4); }
+
+/* 删除操作统一使用官方错误色，编辑和新增按钮由所在看板的状态色覆盖。 */
+button.astryx-icon-button[aria-label*="删除"] {
+  color: var(--color-text-error);
+}
+button.astryx-icon-button[aria-label*="删除"]:hover,
+button.astryx-icon-button[aria-label*="删除"]:focus-visible {
+  color: var(--color-text-error);
+  background: var(--color-background-red);
+}
+
+/* 详情页直接使用官方 TabList 的选中态，不再套旧的胶囊外框。 */
+html[data-astryx-theme] .requirement-detail-page__tabs {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 会议筛选保持日期范围与操作按钮同一行。 */
+.meeting-toolbar__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
+  flex-wrap: nowrap;
+}
+.meeting-toolbar__actions > .astryx-field { width: auto; min-width: 220px; }
+
+/* 项目 Tab 使用 Astryx Neutral 的官方浅色状态色。 */
+.project-tab-wrap { border-color: transparent; background: var(--color-background-gray); color: var(--color-text-secondary); }
+.project-tab-wrap:hover,
+.project-tab-wrap--active { border-color: var(--color-border-blue); background: var(--color-background-blue); color: var(--color-text-blue); }
+.project-tab__add-child { border-color: var(--color-border-blue); background: var(--color-background-blue); color: var(--color-text-blue); }
+.project-tab__expand--open { color: var(--color-text-blue); }
+
+/* 亮色主题下保留官方 Neutral 的页面层级与状态颜色。 */
+html[data-astryx-theme] body { background: var(--color-background-body); background-image: none; }
+html[data-astryx-theme] .project-manager__head,
+html[data-astryx-theme] .project-manager-board,
+html[data-astryx-theme] .content:not(.content--knowledge) { background: var(--color-background-surface); }
+
+@media (max-width: 599px) {
+  .project-manager__actions { margin-inline-start: auto; }
+  .project-task-groups { display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; }
+  .project-task-groups > .status-group { width: 100%; flex-basis: auto; }
+}
+
+@media (max-width: 767px) {
+  .collection-page--board .collection-board-scroll {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .collection-page--board .collection-board-scroll .collection-column {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 320px;
+    height: auto;
+  }
+}
+
+/* 项目工作台固定为三个状态列时，三列等分填满内容区。 */
+.project-task-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow-x: hidden;
+}
+.project-task-groups > .status-group {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+@media (max-width: 599px) {
+  .project-task-groups {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .project-task-groups > .status-group {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}
+
+/* 产品经理需求池固定为五个状态列时，五列等分填满内容区。 */
+.req-pool-shell .status-groups {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow-x: hidden;
+}
+.req-pool-shell .status-group {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+@media (max-width: 599px) {
+  .req-pool-shell .status-groups {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .req-pool-shell .status-group {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+}
