@@ -1,4 +1,4 @@
-# 项目 UI 规范
+# 项目规范
 
 ## 适用范围
 
@@ -20,3 +20,7 @@
 - 前端迁移后运行 `npm run build`，并在浏览器里验证涉及的交互、窄屏布局、键盘可用性和适用的空白、加载及错误状态。
 
 [Astryx 官方组件文档](https://github.com/meta/astryx/blob/main/packages/core/README.md) · [样式接入](https://astryx.atmeta.com/docs/styling-overview) · [渐进迁移](https://astryx.atmeta.com/docs/migration)
+
+## Git 工作流
+
+- 后续迭代默认在 `main` 上开发。用户要求推送时，检查本地提交和远程状态后直接推送到 `origin/main`。用户明确指定其他分支时，按指定分支操作。
