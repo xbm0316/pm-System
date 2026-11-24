@@ -128,7 +128,6 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     const labels: Record<string, string> = { price: '售价', cost: '采购成本', shipping: '物流成本', paymentFee: '支付手续费', adCost: '预计投流成本', refundReserve: '退款预留' }
     return <>
       <div className="operations-section-head">
-        <div />
         <Button label="添加商品" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newProduct} />
       </div>
       <div className="operations-product-list">
@@ -196,7 +195,6 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     const revenue = campaigns.reduce((sum, item) => sum + item.revenue, 0)
     return <>
       <div className="operations-section-head operations-section-head--compact">
-        <span aria-hidden="true" />
         <Button label="新增投流计划" variant="primary" onClick={newCampaign} />
       </div>
       <div className="operations-kpi-row">

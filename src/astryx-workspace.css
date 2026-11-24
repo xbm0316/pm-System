@@ -126,6 +126,13 @@ html[data-astryx-theme] body {
   background: var(--color-background-surface);
 }
 
+.content--operations:not(.content--knowledge) { padding-block-start: var(--spacing-2); }
+.operations-workspace__body { padding-block-start: 0; }
+.operations-workspace__body > .operations-section-head {
+  flex-direction: row;
+  justify-content: flex-end;
+}
+
 .status-group, .collection-group {
   background: var(--color-background-muted);
   border-color: var(--color-border);

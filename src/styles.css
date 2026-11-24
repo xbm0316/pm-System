@@ -5018,7 +5018,7 @@ body {
 }
 
 @media (max-width: 760px) {
-  .operations-workspace { padding: 16px 14px 18px; }
+  .operations-workspace { padding: 0 14px 18px; }
   .operations-workspace__head { align-items: flex-start; flex-direction: column; }
   .operations-workspace__grid { grid-template-columns: repeat(1, minmax(0, 1fr)); }
 }
