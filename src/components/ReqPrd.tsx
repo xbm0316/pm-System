@@ -7,10 +7,11 @@ import { TextInput } from '@astryxdesign/core/TextInput'
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { Button } from '@astryxdesign/core/Button'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from './Icon'
 import PriorityBadge from './PriorityBadge'
 import { uid, type PrdOptionalSection, type PrdTableRow, type Requirement, type RequirementPrd } from '../lib/store'
+import RichTextField, { RichTextContent } from './RichTextField'
 
 interface Props { requirement: Requirement; mode: 'view' | 'edit'; onClose: () => void; onSave: (prd: RequirementPrd) => void; embedded?: boolean }
 const OPTIONAL_SECTIONS: Array<{ key: PrdOptionalSection; label: string; icon: string }> = [
@@ -20,18 +21,6 @@ const OPTIONAL_SECTIONS: Array<{ key: PrdOptionalSection; label: string; icon: s
   { key: 'state-machine', label: '状态机', icon: 'clock' },
 ]
 function emptyPrd(): RequirementPrd { return { background: '', explanation: '', contentRows: [{ id: uid(), module: '', change: '', note: '' }], changeLog: '', optionalSections: [], optionalContent: {}, updatedAt: 0 } }
-
-type EditorCommand = { label: string; icon?: string; text?: string; command: string; value?: string }
-const EDITOR_COMMANDS: EditorCommand[] = [
-  { label: '标题 1', text: 'H1', command: 'formatBlock', value: 'h2' },
-  { label: '标题 2', text: 'H2', command: 'formatBlock', value: 'h3' },
-  { label: '粗体', icon: 'bold', command: 'bold' },
-  { label: '斜体', icon: 'italic', command: 'italic' },
-  { label: '链接', icon: 'link', command: 'createLink' },
-  { label: '无序列表', icon: 'list', command: 'insertUnorderedList' },
-  { label: '有序列表', icon: 'listOrdered', command: 'insertOrderedList' },
-  { label: '代码', icon: 'code', command: 'formatBlock', value: 'pre' },
-]
 
 type DiagramNode = { id: string; x: number; y: number; text: string; shape: 'start' | 'process' | 'decision' | 'text' }
 type DiagramData = { nodes: DiagramNode[] }
@@ -116,69 +105,8 @@ function DiagramEditor({ label, value, editable, onChange }: { label: string; va
   </section>
 }
 
-function RichEditor({ value, editable, onChange, placeholder }: { value: string; editable: boolean; onChange: (value: string) => void; placeholder: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const mounted = useRef(false)
-  const linkSelection = useRef<Range | null>(null)
-  const [linkDraft, setLinkDraft] = useState<string | null>(null)
-  useEffect(() => { const element = ref.current; if (!element) return; const focused = document.activeElement === element; if (!mounted.current || (!focused && element.innerHTML !== value)) element.innerHTML = value; mounted.current = true }, [value, editable])
-  function syncValue() { onChange(ref.current?.innerHTML || '') }
-  function command(item: EditorCommand) {
-    if (!editable) return
-    ref.current?.focus()
-    if (item.command === 'createLink') {
-      const selection = window.getSelection()
-      const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-      linkSelection.current = range && ref.current?.contains(range.commonAncestorContainer) ? range.cloneRange() : null
-      setLinkDraft('')
-      return
-    }
-    document.execCommand(item.command, false, item.value)
-    syncValue()
-  }
-  function insertLink() {
-    const url = linkDraft?.trim()
-    if (!url) return
-    const selection = window.getSelection()
-    const range = linkSelection.current
-    linkSelection.current = null
-    setLinkDraft(null)
-    requestAnimationFrame(() => {
-      ref.current?.focus()
-      if (range && selection) {
-        selection.removeAllRanges()
-        selection.addRange(range)
-      }
-      document.execCommand('createLink', false, url)
-      syncValue()
-    })
-  }
-  function keyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (!editable) return
-    const modifier = event.metaKey || event.ctrlKey
-    if (modifier && /^[1-3]$/.test(event.key)) { event.preventDefault(); document.execCommand('formatBlock', false, `h${event.key}`); syncValue() }
-    if (event.key === 'Tab') { event.preventDefault(); document.execCommand(event.shiftKey ? 'outdent' : 'indent'); syncValue() }
-  }
-  return <div className={`rich-editor${editable ? ' rich-editor--editable' : ' rich-editor--readonly'}`}>
-    {editable && <div className="rich-editor__toolbar" role="toolbar" aria-label="文本格式">
-      {EDITOR_COMMANDS.map((item, index) => <span key={item.label} className="rich-editor__tool-wrap"><IconButton label={item.label} icon={item.text ? <span aria-hidden="true">{item.text}</span> : <Icon name={item.icon || 'bold'} size={14} />} variant="ghost" size="sm" type="button" className={`rich-editor__tool${item.text ? ' rich-editor__tool--text' : ''}`} onMouseDown={(event) => event.preventDefault()} onClick={() => command(item)} />{index === 1 || index === 3 || index === 4 ? <span className="rich-editor__divider" /> : null}</span>)}
-      <span className="rich-editor__hint">⌘/Ctrl + 1–3 标题 · Tab 缩进</span>
-    </div>}
-    <div ref={ref} className="rich-editor__surface" contentEditable={editable} suppressContentEditableWarning role={editable ? 'textbox' : undefined} aria-multiline={editable || undefined} data-placeholder={placeholder} onInput={syncValue} onBlur={syncValue} onKeyDown={keyDown} />
-    {linkDraft !== null && <WorkspaceDialog title="插入链接" onClose={() => { linkSelection.current = null; setLinkDraft(null) }}>
-      <form className="app-dialog-form" onSubmit={(event) => { event.preventDefault(); insertLink() }}>
-        <TextInput label="链接地址" isRequired hasAutoFocus value={linkDraft} onChange={setLinkDraft} />
-        <HStack gap={2} hAlign="end">
-          <Button label="取消" variant="secondary" onClick={() => { linkSelection.current = null; setLinkDraft(null) }} />
-          <Button label="插入" variant="primary" type="submit" isDisabled={!linkDraft.trim()} />
-        </HStack>
-      </form>
-    </WorkspaceDialog>}
-  </div>
-}
-
 function TextBlock({ label, value, editable, placeholder, onChange }: { label: string; value: string; editable: boolean; placeholder: string; onChange: (value: string) => void }) {
-  return <section className="prd-section"><div className="prd-section__label">{label}</div>{editable ? <TextArea label={label} value={value} isLabelHidden width="100%" rows={4} placeholder={placeholder} onChange={onChange} /> : <div className={`prd-text${value ? '' : ' prd-text--empty'}`}>{value || '暂未填写'}</div>}</section>
+  return <section className="prd-section"><div className="prd-section__label">{label}</div>{editable ? <RichTextField label={label} value={value} placeholder={placeholder} minHeight={160} onChange={onChange} /> : value ? <RichTextContent value={value} className="prd-text" /> : <div className="prd-text prd-text--empty">暂未填写</div>}</section>
 }
 
 function EditableTable({ rows, editable, onUpdate, onAdd, onRemove, onReorder }: { rows: PrdTableRow[]; editable: boolean; onUpdate: (id: string, field: keyof Omit<PrdTableRow, 'id'>, value: string) => void; onAdd: () => void; onRemove: (id: string) => void; onReorder: (from: string, to: string) => void }) {
@@ -208,10 +136,10 @@ export default function ReqPrd({ requirement, mode, onClose, onSave, embedded = 
     <header className="prd-page__header"><div>{!embedded && <div className="prd-page__heading"><div className="prd-page__meta-row"><span className="prd-page__version">{requirement.version}</span><PriorityBadge priority={requirement.priority} /></div><h2 className="prd-page__title"><span className="prd-page__title-text">{requirement.name}</span></h2></div>}{embedded && <span className="prd-page__embedded-label">PRD 内容</span>}</div><div className="prd-page__actions"><IconButton label="编辑 PRD" icon={<Icon name="edit" size={15} />} variant="ghost" size="sm" className={`icon-btn${editing ? ' icon-btn--active' : ''}`} type="button" onClick={() => setEditing(true)} /><div className="prd-add-wrap"><IconButton label="添加区块" icon={<Icon name="plus" size={16} />} variant="ghost" size="sm" className={`icon-btn${showAddMenu ? ' icon-btn--active' : ''}`} type="button" onClick={() => editing && setShowAddMenu((value) => !value)} aria-expanded={editing ? showAddMenu : undefined} isDisabled={!editing} />{showAddMenu && editing && <div className="prd-add-menu"><div className="prd-add-menu__title">显示区块</div>{OPTIONAL_SECTIONS.map((section) => <div className="prd-add-menu__item" key={section.key}><CheckboxInput label={section.label} onChange={() => toggleOptionalSection(section.key)} value={prd.optionalSections.includes(section.key)} /></div>)}</div>}</div>{!embedded && <IconButton label="关闭 PRD" variant="ghost" size="sm" icon={<Icon name="close" size={15} />} type="button" onClick={onClose} />}</div></header>
     <div className="prd-page__body"><TextBlock label="需求背景" value={prd.background} editable={editing} placeholder="填写需求背景、用户问题和业务目标…" onChange={(value) => patchPrd({ background: value })} />
       {prd.optionalSections.includes('competitor') && <TextBlock label="竞品分析" value={prd.optionalContent.competitor || ''} editable={editing} placeholder="填写竞品观察、差异和借鉴点…" onChange={(value) => updateOptionalContent('competitor', value)} />}
-      <section className="prd-section"><div className="prd-section__label">需求说明</div><RichEditor value={prd.explanation} editable={editing} placeholder="使用标题、列表和缩进整理需求说明…" onChange={(value) => patchPrd({ explanation: value })} /></section>
+      <section className="prd-section"><div className="prd-section__label">需求说明</div><RichTextField label="需求说明" value={prd.explanation} editable={editing} placeholder="使用标题、列表和缩进整理需求说明…" minHeight={180} onChange={(value) => patchPrd({ explanation: value })} /></section>
       {(['business-flow', 'system-flow', 'state-machine'] as PrdOptionalSection[]).map((key) => prd.optionalSections.includes(key) && <DiagramEditor key={key} label={OPTIONAL_SECTIONS.find((item) => item.key === key)?.label || key} value={prd.optionalContent[key] || ''} editable={editing} onChange={(value) => updateOptionalContent(key, value)} />)}
       <section className="prd-section"><div className="prd-section__label">需求内容</div><EditableTable rows={prd.contentRows} editable={editing} onUpdate={updateRow} onAdd={addRow} onRemove={removeRow} onReorder={reorderRows} /></section>
-      <section className="prd-section"><div className="prd-section__label">改动记录</div><RichEditor value={prd.changeLog} editable={editing} placeholder="记录需求的调整、决策和变更原因…" onChange={(value) => patchPrd({ changeLog: value })} /></section>
+      <section className="prd-section"><div className="prd-section__label">改动记录</div><RichTextField label="改动记录" value={prd.changeLog} editable={editing} placeholder="记录需求的调整、决策和变更原因…" minHeight={160} onChange={(value) => patchPrd({ changeLog: value })} /></section>
     </div><footer className="prd-page__footer"><span className="prd-page__footer-hint">{editing ? '编辑完成后保存，保存后将以完整内容展示' : '当前为只读展示状态'}</span>{editing && <Button label="保存 PRD" variant="primary" type="button" onClick={save} />}</footer>
   </div>
 }

@@ -9,7 +9,8 @@ import { IconButton } from '@astryxdesign/core/IconButton'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { useMemo, useState } from 'react'
 import Icon from './Icon'
-import RichTextField from './RichTextField'
+import RichTextField, { RichTextContent } from './RichTextField'
+import { richTextPlainText } from '../lib/richText'
 import DateRangePicker from './DateRangePicker'
 import DatePicker from './DatePicker'
 import { uid, type ProjectTask, type WorkspaceMeeting } from '../lib/store'
@@ -36,7 +37,7 @@ export default function MeetingWorkspace({ spaceId, meetings, tasks, onChange, o
   const [filterEndDate, setFilterEndDate] = useState('')
   const [error, setError] = useState('')
 
-  const visibleMeetings = useMemo(() => meetings.filter((item) => (!filterStartDate || item.date >= filterStartDate) && (!filterEndDate || item.date <= filterEndDate)).filter((item) => !searchQuery.trim() || `${item.title} ${item.content}`.toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase())).sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt), [filterEndDate, filterStartDate, meetings, searchQuery])
+  const visibleMeetings = useMemo(() => meetings.filter((item) => (!filterStartDate || item.date >= filterStartDate) && (!filterEndDate || item.date <= filterEndDate)).filter((item) => !searchQuery.trim() || `${item.title} ${richTextPlainText(item.content)}`.toLocaleLowerCase().includes(searchQuery.trim().toLocaleLowerCase())).sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.createdAt - a.createdAt), [filterEndDate, filterStartDate, meetings, searchQuery])
   function openCreate() { setEditing(null); setTitle(''); setDate(''); setContent(''); setSelectedTaskIds([]); setError(''); setDialog('create') }
   function openEdit(item: WorkspaceMeeting) { setEditing(item); setTitle(item.title); setDate(item.date); setContent(item.content); setSelectedTaskIds(item.taskIds || []); setError(''); setDialog('edit'); setDetail(null) }
   function closeDialog() { setDialog(null); setEditing(null); setError('') }

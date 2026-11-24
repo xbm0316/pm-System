@@ -14,6 +14,7 @@ import { deleteLocalFile } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 import PriorityBadge from './PriorityBadge'
 import { Stepper, Step } from '@astryxdesign/core/Stepper'
+import { RichTextContent } from './RichTextField'
 
 interface Props {
   spaceId: string
@@ -55,7 +56,7 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
         <div className="track-detail__content">
           <div className="track-detail__launch-inline"><span className="field-label">预计上线时间</span><strong>{r.launchDate ? r.launchDate.slice(0, 10) : '未设置'}</strong></div>
           <div className="field-label">需求内容</div>
-          <div className="track-detail__text">{r.content || '暂无需求内容'}</div>
+          {r.content ? <RichTextContent value={r.content} className="track-detail__text" /> : <div className="track-detail__text">暂无需求内容</div>}
         </div>
 
         <div className="track-detail__related">

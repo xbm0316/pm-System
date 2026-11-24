@@ -1,11 +1,12 @@
 import { Heading } from '@astryxdesign/core/Text'
 import { WorkspaceOverlay } from './WorkspaceDialog'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
-import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { useState } from 'react'
 import { type Requirement, type Retro } from '../lib/store'
 import PriorityBadge from './PriorityBadge'
+import RichTextField, { RichTextContent } from './RichTextField'
+import { richTextPlainText } from '../lib/richText'
 
 interface Props {
   spaceId: string
@@ -22,7 +23,7 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
   const query = searchQuery.trim().toLocaleLowerCase()
   const list = requirements
     .filter((r) => r.spaceId === spaceId && r.status === '已上线')
-    .filter((r) => !query || [r.name, r.content].join(' ').toLocaleLowerCase().includes(query))
+    .filter((r) => !query || [r.name, richTextPlainText(r.content)].join(' ').toLocaleLowerCase().includes(query))
     .sort((a, b) => b.createdAt - a.createdAt)
   const current = list.find((r) => r.id === openId)
   const currentRetros = retros.filter((x) => x.reqId === openId).sort((a, b) => a.createdAt - b.createdAt)
@@ -81,7 +82,7 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
                 currentRetros.map((x, i) => (
                   <div key={x.id} className="retro-item">
                     <div className="retro-item__idx">{String(i + 1).padStart(2, '0')}</div>
-                    <div className="retro-item__content">{x.content}</div>
+                    <div className="retro-item__content"><RichTextContent value={x.content} /></div>
                   </div>
                 ))
               )}
@@ -90,7 +91,7 @@ export default function RetroList({ spaceId, requirements, retros, onAddRetro, s
             <div className="field-label" style={{ marginTop: 18 }}>
               写复盘
             </div>
-            <TextArea label="写复盘" isLabelHidden width="100%" rows={4} value={draft} placeholder="做得好的是什么，下次改什么…" onChange={setDraft} />
+            <RichTextField label="写复盘" value={draft} placeholder="做得好的是什么，下次改什么…" onChange={setDraft} />
 
             <div className="modal__actions">
               <Button label="关闭" variant="ghost" onClick={() => setOpenId(null)} />

@@ -18,6 +18,7 @@ import { Stepper, Step } from '@astryxdesign/core/Stepper'
 import { useEffect, useMemo, useState, type SyntheticEvent } from 'react'
 import Icon from './Icon'
 import RichTextField from './RichTextField'
+import { richTextPlainText } from '../lib/richText'
 import PriorityBadge from './PriorityBadge'
 import ProjectTaskDetailPage from './ProjectTaskDetailPage'
 import RetroWorkspace from './RetroWorkspace'
@@ -179,7 +180,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
     if (!activeProject) return []
     return store.tasks
       .filter((task) => task.projectId === activeProject.id)
-      .filter((task) => !query || [task.name, task.content, task.detail, task.priority, task.status].join(' ').toLocaleLowerCase().includes(query))
+      .filter((task) => !query || [task.name, richTextPlainText(task.content), richTextPlainText(task.detail), task.priority, task.status].join(' ').toLocaleLowerCase().includes(query))
       .sort((a, b) => b.createdAt - a.createdAt)
   }, [activeProject, query, store.tasks])
 
@@ -399,7 +400,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
               {TASK_STATUSES.map((status) => {
                 const tasks = visibleTasks.filter((task) => task.status === status)
                 return <Card padding={0} variant="muted" className={`status-group status-group--${statusClass(status)}`} key={status}>
-                  <Layout height="fill" header={<LayoutHeader hasDivider padding={3}><BoardLaneHeading name={status} count={tasks.length} variant={status === '调研中' ? 'neutral' : status === '处理中' ? 'accent' : 'success'} /></LayoutHeader>} content={<LayoutContent padding={2}><div className="status-group__body-shell"><div className="status-group__body">{tasks.length === 0 ? <EmptyState isCompact title="暂无任务" /> : tasks.map((task) => <div className="req-card-wrap project-task-card-wrap" key={task.id}><ClickableCard label={`${task.name}，查看任务详情`} padding={0} className="req-card project-task-card" onClick={() => setDetailTaskId(task.id)}><div className="req-card__top"><span className="req-card__ver">任务</span><PriorityBadge priority={task.priority} /></div><div className="req-card__name">{task.name}</div>{task.content && <div className="req-card__content">{task.content}</div>}</ClickableCard><div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}><IconButton label={`编辑 ${task.name}`} variant="ghost" size="sm" className="req-card__edit" icon={<Icon name="edit" size={13} />} type="button" onClick={() => setDetailTaskId(task.id)} /><IconButton label={`删除 ${task.name}`} variant="ghost" size="sm" className="req-card__delete" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTaskTarget(task)} /></div></div>)}</div></div></LayoutContent>} />
+                  <Layout height="fill" header={<LayoutHeader hasDivider padding={3}><BoardLaneHeading name={status} count={tasks.length} variant={status === '调研中' ? 'neutral' : status === '处理中' ? 'accent' : 'success'} /></LayoutHeader>} content={<LayoutContent padding={2}><div className="status-group__body-shell"><div className="status-group__body">{tasks.length === 0 ? <EmptyState isCompact title="暂无任务" /> : tasks.map((task) => <div className="req-card-wrap project-task-card-wrap" key={task.id}><ClickableCard label={`${task.name}，查看任务详情`} padding={0} className="req-card project-task-card" onClick={() => setDetailTaskId(task.id)}><div className="req-card__top"><span className="req-card__ver">任务</span><PriorityBadge priority={task.priority} /></div><div className="req-card__name">{task.name}</div>{task.content && <div className="req-card__content">{richTextPlainText(task.content)}</div>}</ClickableCard><div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}><IconButton label={`编辑 ${task.name}`} variant="ghost" size="sm" className="req-card__edit" icon={<Icon name="edit" size={13} />} type="button" onClick={() => setDetailTaskId(task.id)} /><IconButton label={`删除 ${task.name}`} variant="ghost" size="sm" className="req-card__delete" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTaskTarget(task)} /></div></div>)}</div></div></LayoutContent>} />
                 </Card>
               })}
             </div>

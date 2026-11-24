@@ -1,5 +1,6 @@
 import './styles.css'
 import './astryx-workspace.css'
+import '@astryxdesign/richtext/richtext.css'
 import { InternationalizationProvider } from '@astryxdesign/core/i18n'
 import zhCN from '@astryxdesign/core/locales/zh-CN.generated.js'
 import { Theme } from '@astryxdesign/core/theme'

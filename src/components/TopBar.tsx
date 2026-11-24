@@ -11,6 +11,7 @@ import { TextInput } from '@astryxdesign/core/TextInput'
 import { useEffect, useRef, useState } from 'react'
 import { formatTodoDueAt, type Todo } from '../lib/todos'
 import Icon from './Icon'
+import { richTextPlainText } from '../lib/richText'
 
 type Reminder = { id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string }
 
@@ -112,7 +113,7 @@ export default function TopBar({
                       <div>
                         <Text>{item.title}</Text>
                         <Text type="supporting" color="secondary" display="block">截止 {formatTodoDueAt(item.dueAt)}</Text>
-                        {item.content && <Text type="supporting" display="block" color="secondary">{item.content}</Text>}
+                        {item.content && <Text type="supporting" display="block" color="secondary">{richTextPlainText(item.content)}</Text>}
                       </div>
                       <Button size="sm" variant="secondary" label="完成" aria-label={`完成 ${item.title}`} onClick={() => onCompleteTodo?.(item.id)} />
                     </div>

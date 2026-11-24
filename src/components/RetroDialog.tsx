@@ -1,9 +1,9 @@
 import { Heading } from '@astryxdesign/core/Text'
 import { WorkspaceOverlay } from './WorkspaceDialog'
-import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { useState } from 'react'
 import type { Requirement, Retro } from '../lib/store'
+import RichTextField, { RichTextContent } from './RichTextField'
 
 interface Props {
   requirement: Requirement
@@ -39,12 +39,12 @@ export default function RetroDialog({ requirement, retros, onAdd, onClose, embed
           ) : currentRetros.map((retro, index) => (
             <div className="retro-item" key={retro.id}>
               <div className="retro-item__idx">{String(index + 1).padStart(2, '0')}</div>
-              <div className="retro-item__content">{retro.content}</div>
+              <div className="retro-item__content"><RichTextContent value={retro.content} /></div>
             </div>
           ))}
         </div>
         <div className="field-label" style={{ marginTop: 18 }}>写复盘</div>
-        <TextArea label="写复盘" isLabelHidden width="100%" rows={4} value={draft} placeholder="做得好的是什么，下次改什么…" onChange={setDraft} />
+        <RichTextField label="写复盘" value={draft} placeholder="做得好的是什么，下次改什么…" onChange={setDraft} />
         <div className="modal__actions">
           <Button label="关闭" variant="ghost" onClick={onClose} />
           <Button label="保存复盘" variant="primary" onClick={save} style={{ opacity: draft.trim() ? 1 : 0.45 }} />

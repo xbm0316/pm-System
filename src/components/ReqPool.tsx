@@ -15,6 +15,7 @@ import { TextArea } from '@astryxdesign/core/TextArea'
 import { useState, useEffect, useRef, useCallback, type RefObject } from 'react'
 import Icon from './Icon'
 import RichTextField from './RichTextField'
+import { richTextPlainText } from '../lib/richText'
 import PriorityBadge from './PriorityBadge'
 import DatePicker from './DatePicker'
 import CompetitorMultiSelect from './CompetitorMultiSelect'
@@ -170,7 +171,7 @@ function StatusGroup({ status, items, activeReqId, onOpenTrack, onRequestDelete,
                   <PriorityBadge priority={r.priority} />
                 </div>
                 <div className="req-card__name">{r.name}</div>
-                {r.content && <div className="req-card__content">{r.content}</div>}
+                {r.content && <div className="req-card__content">{richTextPlainText(r.content)}</div>}
               </ClickableCard>
               <div className="req-card__bottom-actions" onClick={(event) => event.stopPropagation()}>
                 <IconButton label={`基于 ${r.version} 新增需求`} variant="ghost" size="sm" className="req-card__add" icon={<Icon name="plus" size={14} />} type="button" onClick={() => onAddChild(r.version)} />

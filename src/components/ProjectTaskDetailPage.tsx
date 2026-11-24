@@ -9,7 +9,6 @@ import { VStack } from '@astryxdesign/core/Layout'
 import { Tab, TabList } from '@astryxdesign/core/TabList'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { TextInput } from '@astryxdesign/core/TextInput'
-import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
@@ -19,6 +18,7 @@ import DateRangeField from './DateRangeField'
 import { TASK_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type TaskStatus } from '../lib/store'
 import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
+import RichTextField, { RichTextContent } from './RichTextField'
 
 type TaskTab = 'content' | 'issues'
 
@@ -193,7 +193,8 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
             </section>
             <section className="project-task-section">
               <div className="project-task-section__label">任务内容</div>
-              {editing ? <TextArea label="任务内容" value={draftContent} isLabelHidden width="100%" rows={6} onChange={setDraftContent} /> : <><div className="project-task-section__text">{task.content || '暂未填写任务说明'}</div>{task.detail && <div className="project-task-section__detail">{task.detail}</div>}</>}
+              {editing ? <RichTextField label="任务内容" value={draftContent} placeholder="目标、验收标准或执行说明…" minHeight={180} onChange={setDraftContent} /> : task.content ? <RichTextContent value={task.content} className="project-task-section__text" /> : <div className="project-task-section__text">暂未填写任务说明</div>}
+              {!editing && task.detail && <RichTextContent value={task.detail} className="project-task-section__detail" />}
             </section>
             <section className="project-task-section">
               <div className="project-task-section__label">任务相关文件</div>
@@ -210,7 +211,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
               <div className="project-task-section__label">问题台账</div>
               <div className="project-issue-form">
                 <TextInput label="问题标题" isLabelHidden width="100%" value={title} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addIssue() } }} placeholder="问题标题" onChange={setTitle} />
-                <TextArea label="补充问题描述（可选）" isLabelHidden width="100%" rows={3} value={description} placeholder="补充问题描述（可选）" onChange={setDescription} />
+                <RichTextField label="补充问题描述（可选）" value={description} placeholder="补充问题描述（可选）" minHeight={120} onChange={setDescription} />
                 <div className="project-issue-form__date">截止日期<DatePicker value={issueEndDate} onChange={setIssueEndDate} label="截止日期" /></div>
                 <div className="project-issue-form__actions"><Button label="添加问题" variant="primary" type="button" onClick={addIssue} style={{ opacity: title.trim() ? 1 : .45 }} /></div>
               </div>
@@ -219,7 +220,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
               {taskIssues.length === 0 ? <div className="project-issues__empty">暂未记录问题</div> : taskIssues.map((issue) => (
                 <ClickableCard label={`查看问题 ${issue.title}`} padding={0} className="project-issue" key={issue.id} onClick={() => setOpenIssueId(issue.id)}>
                   <div className="project-issue__top"><div className="project-issue__title">{issue.title}</div><div className="project-issue-status-list">{issueStatuses.map((status) => <button type="button" key={status} className={`project-task-status project-issue-status${status === issue.status ? ' project-task-status--active project-task-status--current' : ''}`} onClick={() => onUpdateIssue(issue.id, { status })}><span className="project-task-status__dot"><Icon name="check" size={11} /></span><span>{status}</span></button>)}</div></div>
-                  {issue.description && <div className="project-issue__description">{issue.description}</div>}
+                  {issue.description && <RichTextContent value={issue.description} className="project-issue__description" />}
                   {issue.endDate && <div className="project-issue__date">截止于 {issue.endDate}</div>}
                   <div className="project-issue__date">{new Date(issue.createdAt).toLocaleString('zh-CN', { hour12: false })}</div>
                 </ClickableCard>
@@ -232,7 +233,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
         <VStack gap={2}>
           <Text>状态：{openIssue.status}</Text>
           {openIssue.endDate && <Text>截止日期：{openIssue.endDate}</Text>}
-          {openIssue.description && <Text className="project-issue__description">{openIssue.description}</Text>}
+          {openIssue.description && <RichTextContent value={openIssue.description} className="project-issue__description" />}
         </VStack>
       </WorkspaceDialog>}
       {deleteAttachment && <WorkspaceOverlay label="确认删除附件？" onClose={() => setDeleteAttachment(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认删除附件？</Heading><div className="delete-confirm-modal__text">删除「{deleteAttachment.name}」后无法恢复。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteAttachment(null)} /><Button label="确认删除" variant="destructive" type="button" onClick={() => removeAttachment(deleteAttachment)} /></div></div></WorkspaceOverlay>}

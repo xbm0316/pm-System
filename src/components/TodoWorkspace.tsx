@@ -16,6 +16,7 @@ import { formatTodoDueAt, type Todo, type TodoFields } from '../lib/todos'
 import { dateKey } from './DatePicker'
 import Icon from './Icon'
 import RichTextField from './RichTextField'
+import { richTextPlainText } from '../lib/richText'
 import WorkspaceDialog from './WorkspaceDialog'
 
 interface Props {
@@ -57,7 +58,7 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
   const canSave = Boolean(draft?.title.trim() && draft.dueAt && !dateInvalid)
   const query = searchQuery.trim().toLocaleLowerCase()
   // Older records have no timestamp, but storage preserves their insertion order.
-  const visible = todos.filter((item) => !query || `${item.title} ${item.content}`.toLocaleLowerCase().includes(query))
+  const visible = todos.filter((item) => !query || `${item.title} ${richTextPlainText(item.content)}`.toLocaleLowerCase().includes(query))
     .reverse().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
   const now = Date.now()
   const groups = [
@@ -113,7 +114,7 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
                   <VStack gap={2}>
                     <Heading level={4} accessibilityLevel={3}>{item.title}</Heading>
                     <Text type="supporting" color="secondary"><time dateTime={new Date(item.dueAt).toISOString()}>{formatTodoDueAt(item.dueAt)}</time></Text>
-                    {item.content && <Text type="supporting" color="secondary" maxLines={3}>{item.content}</Text>}
+                    {item.content && <Text type="supporting" color="secondary" maxLines={3}>{richTextPlainText(item.content)}</Text>}
                     <HStack gap={1} hAlign="end" wrap="wrap">
                       <IconButton label={`编辑 ${item.title}`} size="sm" variant="ghost" icon={<Icon name="edit" size={14} />} onClick={() => editTodo(item)} />
                       <IconButton label={`删除 ${item.title}`} size="sm" variant="ghost" icon={<Icon name="trash" size={14} />} onClick={() => setDeleteTarget(item)} />
