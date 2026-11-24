@@ -274,7 +274,7 @@ html[data-astryx-theme] .app-dialog-surface { background: transparent; border: 0
 .project-manager__tabs { position: relative; }
 .project-manager__tabs .astryx-tab-list { width: fit-content; max-width: 100%; }
 .project-manager__tabs .astryx-tab-strip { width: auto; }
-.project-manager__tabs .astryx-tab-indicator { inset-inline-start: var(--spacing-3); inset-inline-end: var(--spacing-3); }
+.project-manager__tabs .astryx-tab-indicator { inset-inline-start: 0; inset-inline-end: 0; }
 .project-manager__actions { display: inline-flex; align-items: center; gap: var(--spacing-2); margin-inline-start: auto; }
 .project-manager__actions .astryx-icon-button { flex: 0 0 auto; }
 .project-tab__inline-actions { display: inline-flex; align-items: center; gap: var(--spacing-1); margin-inline-start: var(--spacing-2); }
@@ -285,8 +285,18 @@ html[data-astryx-theme] .app-dialog-surface { background: transparent; border: 0
 .project-tab__inline-expand--open { color: var(--color-text-blue); transform: rotate(90deg); }
 .collection-page--board > .astryx-layout { flex: 1 1 auto; min-height: 0; }
 .collection-page--board .collection-board-toolbar { border-bottom: 0; }
+.collection-page--board .collection-board-toolbar { padding-block-start: 0; }
 .project-task-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-4); overflow-x: hidden; }
 .project-task-groups > .status-group { width: auto; min-width: 0; flex: none; }
+
+/* 项目状态和官方 NumberInput 的字段标题使用同一套排版。 */
+.project-status-modal__fields > div > .field-label {
+  margin-block-end: var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-label-size);
+  font-weight: var(--text-label-weight);
+  line-height: var(--text-label-leading);
+}
 
 /* 需求池和项目工作台的业务卡片使用与官方 Kanban 模板一致的字体层级。 */
 html[data-astryx-theme] :is(.req-pool-shell, .project-task-groups) {
