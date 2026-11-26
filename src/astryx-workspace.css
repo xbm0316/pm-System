@@ -95,6 +95,13 @@ html[data-astryx-theme] body {
 .app-login { flex: 1; min-height: 0; display: grid; align-content: center; justify-items: center; padding: var(--spacing-4); }
 .app-login > div { width: min(100%, 400px); }
 .app-dialog-form { display: grid; gap: var(--spacing-4); }
+.attachment-picker { display: grid; min-width: 0; gap: var(--spacing-2); }
+.attachment-picker > .attachment-picker__trigger { justify-content: flex-start; }
+.attachment-picker__hint, .attachment-picker__destination { color: var(--color-text-secondary); }
+.attachment-picker__destination { display: flex; align-items: center; flex-wrap: wrap; gap: var(--spacing-2); overflow-wrap: anywhere; }
+.project-archive__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-2); }
+.attachment-picker__queue { display: grid; gap: var(--spacing-1); margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.attachment-picker__source-list { display: grid; gap: var(--spacing-2); max-height: min(40vh, 320px); overflow: auto; overflow-wrap: anywhere; }
 .app-date-range-field { display: grid; min-width: 0; gap: var(--spacing-2); justify-items: start; }
 .project-status-modal__fields { display: grid; gap: var(--spacing-4); }
 .project-status-modal__fields > div { min-width: 0; }

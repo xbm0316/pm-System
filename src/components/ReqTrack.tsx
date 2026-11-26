@@ -1,5 +1,4 @@
-import { Heading } from '@astryxdesign/core/Text'
-import { WorkspaceOverlay } from './WorkspaceDialog'
+import ConfirmDataDeletion from './ConfirmDataDeletion'
 import { Button } from '@astryxdesign/core/Button'
 import { useState } from 'react'
 import Icon from './Icon'
@@ -83,7 +82,10 @@ export default function ReqTrack({ spaceId, requirements, onStatusChange, focusI
           )}
         </div>
         </div>
-        {deleteAttachment && <WorkspaceOverlay label="确认删除附件？" onClose={() => setDeleteAttachment(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认删除附件？</Heading><div className="delete-confirm-modal__text">删除「{deleteAttachment.name}」后无法恢复。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteAttachment(null)} /><Button label="确认删除" variant="destructive" type="button" onClick={() => { void deleteLocalFile(deleteAttachment.fileId || deleteAttachment.id); onUpdateAttachments(r.id, (r.attachments || []).filter((item) => item.id !== deleteAttachment.id)); setDeleteAttachment(null) }} /></div></div></WorkspaceOverlay>}
+        {deleteAttachment && <ConfirmDataDeletion title={'删除附件「' + deleteAttachment.name + '」？'} onClose={() => setDeleteAttachment(null)} onDelete={async () => {
+          await deleteLocalFile(deleteAttachment.fileId || deleteAttachment.id)
+          onUpdateAttachments(r.id, (r.attachments || []).filter((item) => item.id !== deleteAttachment.id))
+        }} />}
       </>
     )
   }

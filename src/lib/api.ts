@@ -78,20 +78,24 @@ export async function deleteSpaceRow(id: string, ownerPhone: string) {
   const { data: ownedSpace, error: lookupError } = await supabase.from('spaces').select('id').eq('id', id).eq('owner_phone', ownerPhone).maybeSingle()
   if (lookupError) {
     if (ownerPhone !== '13610392041') {
-      console.error('deleteSpace lookup', lookupError)
-      return
+      throw new Error(lookupError.message)
     }
-    await supabase.from('requirements').delete().eq('space_id', id)
-    await supabase.from('competitors').delete().eq('space_id', id)
+    await removeSpaceContents(id)
     const legacy = await supabase.from('spaces').delete().eq('id', id)
-    if (legacy.error) console.error('deleteSpace', legacy.error)
+    if (legacy.error) throw new Error(legacy.error.message)
     return
   }
   if (!ownedSpace) return
-  await supabase.from('requirements').delete().eq('space_id', id)
-  await supabase.from('competitors').delete().eq('space_id', id)
+  await removeSpaceContents(id)
   const { error } = await supabase.from('spaces').delete().eq('id', id).eq('owner_phone', ownerPhone)
-  if (error) console.error('deleteSpace', error)
+  if (error) throw new Error(error.message)
+}
+
+async function removeSpaceContents(id: string) {
+  const requirements = await supabase.from('requirements').delete().eq('space_id', id)
+  if (requirements.error) throw new Error(requirements.error.message)
+  const competitors = await supabase.from('competitors').delete().eq('space_id', id)
+  if (competitors.error) throw new Error(competitors.error.message)
 }
 
 // ---------- 需求 ----------
@@ -116,8 +120,8 @@ export async function insertRequirement(r: Requirement) {
     if (fallback.error && Object.prototype.hasOwnProperty.call(payload, 'launch_date')) {
       const legacyFallback = { ...competitorFallback, launch_date: undefined }
       const legacyResult = await supabase.from('requirements').insert(legacyFallback)
-      if (legacyResult.error) console.error('insertRequirement', legacyResult.error)
-    } else if (fallback.error) console.error('insertRequirement', fallback.error)
+      if (legacyResult.error) throw new Error(legacyResult.error.message)
+    } else if (fallback.error) throw new Error(fallback.error.message)
   }
 }
 
@@ -141,29 +145,29 @@ export async function updateRequirement(id: string, patch: Partial<Requirement>)
   if (patch.launchDate !== undefined) payload.launch_date = patch.launchDate || null
   if (patch.competitorIds !== undefined) payload.competitor_ids = patch.competitorIds || null
   if (!Object.keys(payload).length) return
-  const { error } = await supabase.from('requirements').update(payload).eq('id', id)
+  const { error } = await supabase.from('requirements').update(payload).eq('id', id).select('id').single()
   if (error && Object.prototype.hasOwnProperty.call(payload, 'competitor_ids')) {
     const fallback = { ...payload }
     delete fallback.competitor_ids
-    const retry = await supabase.from('requirements').update(fallback).eq('id', id)
+    const retry = await supabase.from('requirements').update(fallback).eq('id', id).select('id').single()
     if (retry.error && Object.prototype.hasOwnProperty.call(payload, 'launch_date')) {
       delete fallback.launch_date
-      const legacyRetry = await supabase.from('requirements').update(fallback).eq('id', id)
-      if (legacyRetry.error) console.error('updateRequirement', legacyRetry.error)
-    } else if (retry.error) console.error('updateRequirement', retry.error)
+      const legacyRetry = await supabase.from('requirements').update(fallback).eq('id', id).select('id').single()
+      if (legacyRetry.error) throw new Error(legacyRetry.error.message)
+    } else if (retry.error) throw new Error(retry.error.message)
   } else if (error && Object.prototype.hasOwnProperty.call(payload, 'launch_date')) {
     const fallback = { ...payload }
     delete fallback.launch_date
-    const retry = await supabase.from('requirements').update(fallback).eq('id', id)
-    if (retry.error) console.error('updateRequirement', retry.error)
-  } else if (error) console.error('updateRequirement', error)
+    const retry = await supabase.from('requirements').update(fallback).eq('id', id).select('id').single()
+    if (retry.error) throw new Error(retry.error.message)
+  } else if (error) throw new Error(error.message)
 }
 
 export async function deleteRequirementRow(id: string) {
   const { error: retroError } = await supabase.from('retros').delete().eq('req_id', id)
-  if (retroError) console.error('deleteRequirementRetros', retroError)
+  if (retroError) throw new Error(retroError.message)
   const { error } = await supabase.from('requirements').delete().eq('id', id)
-  if (error) console.error('deleteRequirement', error)
+  if (error) throw new Error(error.message)
 }
 
 // ---------- 竞品 ----------
@@ -180,17 +184,17 @@ export async function insertCompetitor(c: Competitor) {
   const { error } = await supabase.from('competitors').insert({
     id: c.id, space_id: c.spaceId, name: c.name, url: c.url, created_at: c.createdAt,
   })
-  if (error) console.error('insertCompetitor', error)
+  if (error) throw new Error(error.message)
 }
 
 export async function updateCompetitor(id: string, patch: Partial<Pick<Competitor, 'name' | 'url' | 'description'>>) {
-  const { error } = await supabase.from('competitors').update({ ...patch, url: patch.url ?? null }).eq('id', id)
-  if (error) console.error('updateCompetitor', error)
+  const { error } = await supabase.from('competitors').update({ ...patch, url: patch.url ?? null }).eq('id', id).select('id').single()
+  if (error) throw new Error(error.message)
 }
 
 export async function deleteCompetitorRow(id: string) {
   const { error } = await supabase.from('competitors').delete().eq('id', id)
-  if (error) console.error('deleteCompetitor', error)
+  if (error) throw new Error(error.message)
 }
 
 // ---------- 复盘 ----------

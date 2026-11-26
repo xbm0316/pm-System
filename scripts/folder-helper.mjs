@@ -71,8 +71,28 @@ const server = http.createServer(async (request, response) => {
       return respond(response, 200, { ok: true, path: path.relative(path.join(root, scoped.scope), target).replaceAll(path.sep, '/') })
     }
     if (request.method === 'POST' && url.pathname === '/delete-file') {
-      const target = resolveScoped(url.searchParams.get('spaceId') || '', url.searchParams.get('path') || '').target
+      const { target, scope, relativePath } = resolveScoped(url.searchParams.get('spaceId') || '', url.searchParams.get('path') || '')
+      if (!relativePath.startsWith('upload/')) throw new Error('invalid attachment path')
+      const upload = path.join(root, scope, 'upload')
+      let directory = path.dirname(target)
+      const actualRoot = await fs.realpath(root)
+      const relativeDirectory = path.relative(root, directory)
+      try {
+        if (await fs.realpath(directory) !== path.join(actualRoot, relativeDirectory)) throw new Error('invalid attachment directory')
+      } catch (error) {
+        if (error.code === 'ENOENT') return respond(response, 200, { ok: true })
+        throw error
+      }
       await fs.rm(target, { force: true })
+      while (directory !== upload) {
+        try {
+          await fs.rmdir(directory)
+        } catch (error) {
+          if (error.code === 'ENOTEMPTY' || error.code === 'EEXIST') break
+          if (error.code !== 'ENOENT') throw error
+        }
+        directory = path.dirname(directory)
+      }
       return respond(response, 200, { ok: true })
     }
     if (request.method === 'POST' && url.pathname === '/open-folder') {

@@ -26,8 +26,9 @@ self.addEventListener('fetch', (event) => {
     try {
       const id = decodeURIComponent(url.pathname.slice('/local-files/'.length))
       const record = await getFile(id)
-      if (!record?.blob) return new Response('File not found', { status: 404 })
-      return new Response(record.blob, { status: 200, headers: { 'Content-Type': record.mimeType || 'application/octet-stream', 'Content-Length': String(record.size || record.blob.size), 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(record.originalName || 'attachment')}` } })
+      const file = record?.blob ?? await record?.handle?.getFile()
+      if (!file) return new Response('File not found', { status: 404 })
+      return new Response(file, { status: 200, headers: { 'Content-Type': record.mimeType || 'application/octet-stream', 'Content-Length': String(file.size), 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(record.originalName || 'attachment')}`, 'Cache-Control': 'no-store' } })
     } catch {
       return new Response('Local file unavailable', { status: 500 })
     }

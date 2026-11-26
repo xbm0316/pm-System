@@ -55,9 +55,15 @@ export default function App() {
   }
 
   async function deleteSpace(id: string) {
-    setSpaces((prev) => prev.filter((s) => s.id !== id))
-    if (phone) await deleteSpaceRow(id, phone)
     await deleteLocalFilesForSpace(id)
+    if (phone) {
+      await deleteSpaceRow(id, phone)
+      for (const prefix of ['jawcat.project-manager.v4.', 'jawcat.operations.v4.', 'jawcat.workspace-todos.v1.']) {
+        localStorage.removeItem(prefix + phone + '.' + id)
+      }
+      if (phone === '13610392041') localStorage.removeItem('jawcat.project-manager.v4.' + id)
+    }
+    setSpaces((prev) => prev.filter((s) => s.id !== id))
   }
 
   if (!localFilesReady || (phone && loading)) return loadingView

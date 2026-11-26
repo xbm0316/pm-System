@@ -1,6 +1,7 @@
 import { Banner } from '@astryxdesign/core/Banner'
 import { Heading } from '@astryxdesign/core/Text'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import { useAttachmentDraft } from '../lib/useAttachmentDraft'
 import AttachmentPicker from './AttachmentPicker'
 import { WorkspaceOverlay } from './WorkspaceDialog'
 import { IconButton } from '@astryxdesign/core/IconButton'
@@ -12,7 +13,7 @@ import PriorityBadge from './PriorityBadge'
 import ReqTrack from './ReqTrack'
 import type { Competitor, Requirement, RequirementAttachment, RequirementStatus } from '../lib/store'
 import DatePicker from './DatePicker'
-import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
+import { deleteLocalFile } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 import CompetitorMultiSelect from './CompetitorMultiSelect'
 import RichTextField from './RichTextField'
@@ -25,7 +26,7 @@ interface Props {
   competitors: Competitor[]
   onStatusChange: (reqId: string, status: RequirementStatus) => void
   onUpdateAttachments: (reqId: string, attachments: RequirementAttachment[]) => void
-  onUpdateRequirement: (reqId: string, patch: Partial<Requirement>) => void
+  onUpdateRequirement: (reqId: string, patch: Partial<Requirement>) => Promise<void>
   onClose: () => void
 }
 
@@ -33,14 +34,12 @@ export default function RequirementDetailPage({ requirement, requirements, compe
   const [editingRequirement, setEditingRequirement] = useState(false)
   const [draft, setDraft] = useState<RequirementDraft>({ version: requirement.version, name: requirement.name, content: requirement.content, priority: requirement.priority, status: requirement.status, launchDate: requirement.launchDate || '', competitorIds: requirement.competitorIds || [] })
   const [draftAttachments, setDraftAttachments] = useState<RequirementAttachment[]>(requirement.attachments || [])
-  const [newAttachmentIds, setNewAttachmentIds] = useState<string[]>([])
-  const [editAttachmentError, setEditAttachmentError] = useState('')
+  const attachmentDraft = useAttachmentDraft({ maxSize: 15 })
   const bodyRef = useRef<HTMLElement>(null)
   useEffect(() => {
     setDraft({ version: requirement.version, name: requirement.name, content: requirement.content, priority: requirement.priority, status: requirement.status, launchDate: requirement.launchDate || '', competitorIds: requirement.competitorIds || [] })
     setDraftAttachments(requirement.attachments || [])
-    setNewAttachmentIds([])
-  }, [requirement])
+  }, [requirement.id])
 
   function updateDraft(patch: Partial<RequirementDraft>) {
     setDraft((value) => ({ ...value, ...patch }))
@@ -49,50 +48,36 @@ export default function RequirementDetailPage({ requirement, requirements, compe
   function openRequirementEditor() {
     setDraft({ version: requirement.version, name: requirement.name, content: requirement.content, priority: requirement.priority, status: requirement.status, launchDate: requirement.launchDate || '', competitorIds: requirement.competitorIds || [] })
     setDraftAttachments(requirement.attachments || [])
-    setNewAttachmentIds([])
-    setEditAttachmentError('')
+    attachmentDraft.reset()
     setEditingRequirement(true)
   }
 
   function closeRequirementEditor() {
-    void Promise.all(newAttachmentIds.map((id) => deleteLocalFile(id)))
-    setNewAttachmentIds([])
-    setEditAttachmentError('')
+    if (attachmentDraft.saving) return
+    attachmentDraft.reset()
     setEditingRequirement(false)
   }
 
-  async function addEditAttachments(files: File[]) {
-    const incoming = Array.from(files)
-    const valid = incoming.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
-    if (valid.length !== incoming.length) setEditAttachmentError('空文件或超过 15 MB 的文件未添加')
-    if (draftAttachments.length + valid.length > 20) return setEditAttachmentError('需求最多保留 20 个附件')
-    const results = await Promise.allSettled(valid.map((file) => uploadLocalFile(file, { spaceId: requirement.spaceId, entityType: 'requirement', entityId: requirement.id, pathSegments: ['需求', draft.name.trim() || requirement.name, '关联资料'] })))
-    const next = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as RequirementAttachment[]
-    if (next.length) {
-      setDraftAttachments((current) => [...current, ...next])
-      setNewAttachmentIds((current) => [...current, ...next.map((item) => item.fileId || item.id)])
-      setEditAttachmentError('')
-    }
-    if (results.length !== next.length) setEditAttachmentError('部分文件上传失败，请重试')
-  }
-
   function removeEditAttachment(attachment: RequirementAttachment) {
-    const fileId = attachment.fileId || attachment.id
-    if (newAttachmentIds.includes(fileId)) {
-      void deleteLocalFile(fileId)
-      setNewAttachmentIds((current) => current.filter((id) => id !== fileId))
-    }
     setDraftAttachments((current) => current.filter((item) => item.id !== attachment.id))
   }
 
-  function saveRequirementEdit() {
-    if (!draft.name.trim()) return
-    const competitorIds = draft.competitorIds || []
+  async function saveRequirementEdit() {
+    const name = draft.name.trim()
+    if (!name) return
+    const saved = await attachmentDraft.save({
+      spaceId: requirement.spaceId, entityType: 'requirement', entityId: requirement.id,
+      pathSegments: ['需求', name, '关联资料'],
+    }, async (added) => {
+      await onUpdateRequirement(requirement.id, {
+        version: draft.version.trim() || 'V', name, content: draft.content.trim(), priority: draft.priority,
+        status: draft.status, launchDate: draft.launchDate || undefined, competitorIds: draft.competitorIds || [],
+      })
+      onUpdateAttachments(requirement.id, [...draftAttachments, ...added])
+    })
+    if (!saved) return
     const keptIds = new Set(draftAttachments.map((attachment) => attachment.id))
-    void Promise.all((requirement.attachments || []).filter((attachment) => !keptIds.has(attachment.id)).map((attachment) => deleteLocalFile(attachment.fileId || attachment.id)))
-    onUpdateRequirement(requirement.id, { version: draft.version.trim() || 'V', name: draft.name.trim(), content: draft.content.trim(), priority: draft.priority, status: draft.status, launchDate: draft.launchDate || undefined, competitorIds })
-    onUpdateAttachments(requirement.id, draftAttachments)
-    setNewAttachmentIds([])
+    void Promise.allSettled((requirement.attachments || []).filter((attachment) => !keptIds.has(attachment.id)).map((attachment) => deleteLocalFile(attachment.fileId || attachment.id)))
     setEditingRequirement(false)
   }
 
@@ -120,9 +105,9 @@ export default function RequirementDetailPage({ requirement, requirements, compe
           onUpdateAttachments={onUpdateAttachments}
         />
       </main>
-      {editingRequirement && <WorkspaceOverlay label="编辑需求" onClose={closeRequirementEditor}><form className="modal modal--wide project-task-create-modal requirement-edit-modal" onSubmit={(event) => { event.preventDefault(); saveRequirementEdit() }}><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">编辑需求</Heading><div className="form-row requirement-form-meta-row"><div className="requirement-form-version"><div className="field-label">需求版本</div><TextInput label="需求版本" isLabelHidden width="100%" value={draft.version} onChange={(nextValue) => updateDraft({ version: nextValue })} /></div><div className="requirement-form-priority"><div className="field-label">优先级</div><SegmentedControl label="优先级" size="sm" value={draft.priority} onChange={(priority) => updateDraft({ priority: priority as Requirement['priority'] })}>
+      {editingRequirement && <WorkspaceOverlay label="编辑需求" onClose={closeRequirementEditor}><form className="modal modal--wide project-task-create-modal requirement-edit-modal" onSubmit={(event) => { event.preventDefault(); void saveRequirementEdit() }}><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">编辑需求</Heading><div className="form-row requirement-form-meta-row"><div className="requirement-form-version"><div className="field-label">需求版本</div><TextInput label="需求版本" isLabelHidden width="100%" value={draft.version} onChange={(nextValue) => updateDraft({ version: nextValue })} /></div><div className="requirement-form-priority"><div className="field-label">优先级</div><SegmentedControl label="优先级" size="sm" value={draft.priority} onChange={(priority) => updateDraft({ priority: priority as Requirement['priority'] })}>
                       {['P0', 'P1', 'P2', 'P3'].map((priority) => <SegmentedControlItem key={priority} value={priority} label={priority} />)}
-                    </SegmentedControl></div></div><div className="field-label collection-field-gap">需求名称 <span className="field-required">*</span></div><TextInput label="需求名称" value={draft.name} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => updateDraft({ name: nextValue })} /><RichTextField label="需求内容" value={draft.content} placeholder="背景、目标、验收标准…" minHeight={180} onChange={(nextValue) => updateDraft({ content: nextValue })} /><div className="requirement-edit-inline-fields"><div><div className="field-label">预计上线时间</div><DatePicker value={draft.launchDate.slice(0, 10)} onChange={(value) => updateDraft({ launchDate: value })} label="预计上线日期" /></div><div><div className="field-label">关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === requirement.spaceId)} value={draft.competitorIds || []} onChange={(value) => updateDraft({ competitorIds: value })} /></div></div><div className="field-label collection-field-gap">关联资料</div><AttachmentPicker label="添加关联资料" onFiles={(files) => void addEditAttachments(files)} />{draftAttachments.length > 0 && <FileAttachmentList files={draftAttachments} onDelete={(attachment) => removeEditAttachment(attachment as RequirementAttachment)} />}{editAttachmentError && <Banner status="error" title={<>{editAttachmentError}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={closeRequirementEditor} /><Button label="保存" variant="primary" type="submit" isDisabled={!draft.name.trim()} /></div></form></WorkspaceOverlay>}
+                    </SegmentedControl></div></div><div className="field-label collection-field-gap">需求名称 <span className="field-required">*</span></div><TextInput label="需求名称" value={draft.name} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => updateDraft({ name: nextValue })} /><RichTextField label="需求内容" value={draft.content} placeholder="背景、目标、验收标准…" minHeight={180} onChange={(nextValue) => updateDraft({ content: nextValue })} /><div className="requirement-edit-inline-fields"><div><div className="field-label">预计上线时间</div><DatePicker value={draft.launchDate.slice(0, 10)} onChange={(value) => updateDraft({ launchDate: value })} label="预计上线日期" /></div><div><div className="field-label">关联竞品</div><CompetitorMultiSelect options={competitors.filter((competitor) => competitor.spaceId === requirement.spaceId)} value={draft.competitorIds || []} onChange={(value) => updateDraft({ competitorIds: value })} /></div></div><div className="field-label collection-field-gap">关联资料</div><AttachmentPicker label="添加关联资料" files={attachmentDraft.files} onRemove={attachmentDraft.remove} isDisabled={attachmentDraft.saving} onFiles={(files) => attachmentDraft.add(files, draftAttachments)} />{draftAttachments.length > 0 && <FileAttachmentList files={draftAttachments} onDelete={attachmentDraft.saving ? undefined : (attachment) => removeEditAttachment(attachment as RequirementAttachment)} />}{attachmentDraft.error && <Banner status="error" title={<>{attachmentDraft.error}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" isDisabled={attachmentDraft.saving} onClick={closeRequirementEditor} /><Button label="保存" variant="primary" type="submit" isLoading={attachmentDraft.saving} isDisabled={!draft.name.trim()} /></div></form></WorkspaceOverlay>}
     </div>
   )
 }

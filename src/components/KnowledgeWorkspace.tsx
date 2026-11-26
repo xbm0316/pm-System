@@ -3,6 +3,8 @@ import { Heading } from '@astryxdesign/core/Text'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { Table, TableBody, TableRow, TableCell } from '@astryxdesign/core/Table'
 import { TextArea } from '@astryxdesign/core/TextArea'
+import { useAttachmentDraft } from '../lib/useAttachmentDraft'
+import ConfirmDataDeletion from './ConfirmDataDeletion'
 import AttachmentPicker from './AttachmentPicker'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import { Selector } from '@astryxdesign/core/Selector'
@@ -15,7 +17,7 @@ import { TextInput } from '@astryxdesign/core/TextInput'
 import { useEffect, useMemo, useState } from 'react'
 import Icon from './Icon'
 import type { KnowledgeResource, WorkspaceCollectionType } from '../lib/store'
-import { deleteLocalFile, fetchLocalBuffer, uploadLocalFile } from '../lib/localFiles'
+import { deleteLocalFile, deleteLocalFilesForEntities, deleteLocalFilesForEntity, fetchLocalBuffer, uploadLocalFile } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 
 interface Props {
@@ -62,13 +64,14 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
   const [typeName, setTypeName] = useState('')
   const [selectedTypeId, setSelectedTypeId] = useState('')
   const [resourceName, setResourceName] = useState('')
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const attachmentDraft = useAttachmentDraft({ maxFiles: MAX_UPLOAD_FILES, maxSize: 15, maxTotal: MAX_UPLOAD_TOTAL_SIZE / (1024 * 1024) })
+  const selectedFiles = attachmentDraft.files
   const [editorName, setEditorName] = useState('')
   const [editorText, setEditorText] = useState('')
   const [editorHtml, setEditorHtml] = useState('')
   const [sheetRows, setSheetRows] = useState<string[][]>([])
   const [loadingPreview, setLoadingPreview] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const uploading = attachmentDraft.saving
   const [editing, setEditing] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [error, setError] = useState('')
@@ -83,45 +86,24 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
     onChange([...types, { id: `knowledge-${Date.now().toString(36)}`, spaceId, name, createdAt: Date.now() }], resources)
     setTypeName(''); setError(''); setShowCreateType(false)
   }
-  function onFileChange(incoming: File[]) {
-    if (!incoming.length) return
-    setSelectedFiles((current) => {
-      const merged = [...current]
-      incoming.forEach((file) => {
-        if (!merged.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified)) merged.push(file)
-      })
-      if (merged.length > MAX_UPLOAD_FILES) {
-        setError(`最多同时上传 ${MAX_UPLOAD_FILES} 个文件`)
-        return merged.slice(0, MAX_UPLOAD_FILES)
-      }
-      if (merged.reduce((total, file) => total + file.size, 0) > MAX_UPLOAD_TOTAL_SIZE) {
-        setError('文件总大小不能超过 50 MB')
-        return current
-      }
-      setError('')
-      return merged
-    })
-  }
-  function removeSelectedFile(index: number) {
-    setSelectedFiles((current) => current.filter((_, currentIndex) => currentIndex !== index))
-    setError('')
-  }
   async function addResource() {
     if (!selectedTypeId || !selectedFiles.length) return setError('请选择要上传的文件')
-    const invalid = selectedFiles.find((file) => file.size === 0 || file.size > 15 * 1024 * 1024)
-    if (invalid?.size === 0) return setError(`「${invalid.name}」是空文件，不能上传`)
-    if (invalid) return setError(`「${invalid.name}」超过 15 MB，不能上传`)
-    setUploading(true); setError('')
+    setError('')
     const now = Date.now()
-    const draftIds = selectedFiles.map((_, index) => `knowledge-${(now + index).toString(36)}`)
+    const draftIds = selectedFiles.map((_, index) => 'knowledge-' + (now + index).toString(36))
     const typeName = types.find((type) => type.id === selectedTypeId)?.name || selectedTypeId
-    const results = await Promise.allSettled(selectedFiles.map((file, index) => uploadLocalFile(file, { spaceId, entityType: 'knowledge', entityId: draftIds[index], pathSegments: ['知识库', typeName] })))
-    const successful = results.flatMap((result, index) => result.status === 'fulfilled' ? [{ id: draftIds[index], spaceId, typeId: selectedTypeId, name: resourceName.trim() && selectedFiles.length === 1 ? resourceName.trim() : selectedFiles[index].name, fileName: selectedFiles[index].name, mimeType: selectedFiles[index].type || 'application/octet-stream', size: selectedFiles[index].size, fileId: result.value.fileId, fileUrl: result.value.url, relativePath: result.value.relativePath, createdAt: now + index, updatedAt: now + index }] : [])
-    const failedFiles = selectedFiles.filter((_, index) => results[index].status === 'rejected')
-    if (successful.length) onChange(types, [...successful, ...resources])
-    if (failedFiles.length) { setSelectedFiles(failedFiles); setError(`${failedFiles.length} 个文件上传失败，请确认已选择本地文件夹并授予写入权限`) }
-    else { setResourceName(''); setSelectedFiles([]); setShowUpload(false) }
-    setUploading(false)
+    const saved = await attachmentDraft.save((_, index) => ({
+      spaceId, entityType: 'knowledge', entityId: draftIds[index], pathSegments: ['知识库', typeName],
+    }), (attachments) => {
+      const added: KnowledgeResource[] = attachments.map((file, index) => ({
+        id: draftIds[index], spaceId, typeId: selectedTypeId,
+        name: resourceName.trim() && attachments.length === 1 ? resourceName.trim() : file.name,
+        fileName: file.name, mimeType: file.type, size: file.size, fileId: file.fileId,
+        fileUrl: file.url, relativePath: file.relativePath, createdAt: now + index, updatedAt: now + index,
+      }))
+      onChange(types, [...added, ...resources])
+    })
+    if (saved) { setResourceName(''); setShowUpload(false) }
   }
   async function openDetail(resource: KnowledgeResource) {
     setDetail(resource); setEditing(false); setEditorName(resource.name); setEditorText(''); setEditorHtml(''); setSheetRows([]); setRotation(resource.rotation || 0); setError(''); setLoadingPreview(true)
@@ -160,22 +142,37 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
       const typeName = types.find((type) => type.id === detail.typeId)?.name || detail.typeId
       const uploaded = await uploadLocalFile(replacement, { spaceId, entityType: 'knowledge', entityId: detail.id, fileName: detail.fileName, pathSegments: ['知识库', typeName] })
       nextFileId = uploaded.fileId; nextFileUrl = uploaded.url; nextRelativePath = uploaded.relativePath; nextSize = replacement.size
-      await deleteLocalFile(detail.fileId)
     }
     const updatedAt = Date.now()
     const updated = { ...detail, name: editorName.trim(), fileId: nextFileId, fileUrl: nextFileUrl, relativePath: nextRelativePath, mimeType: nextMimeType, size: nextSize, rotation, updatedAt }
     onChange(types, resources.map((item) => item.id === detail.id ? updated : item))
     setDetail(updated); setEditing(false); setError('')
+    if (replacement) {
+      try { await deleteLocalFile(detail.fileId) }
+      catch { setError('新版资料已保存，旧附件暂未清理') }
+    }
   }
-  function removeType() { if (!deleteType) return; resources.filter((item) => item.typeId === deleteType.id).forEach((item) => void deleteLocalFile(item.fileId)); onChange(types.filter((type) => type.id !== deleteType.id), resources.filter((item) => item.typeId !== deleteType.id)); setDeleteType(null) }
-  function removeResource() { if (!deleteResource) return; void deleteLocalFile(deleteResource.fileId); onChange(types, resources.filter((item) => item.id !== deleteResource.id)); setDeleteResource(null); setDetail(null) }
+  async function removeType() {
+    if (!deleteType) return
+    const removing = resources.filter((item) => item.typeId === deleteType.id)
+    await deleteLocalFilesForEntities(removing.map((item) => ({ type: 'knowledge', id: item.id })), spaceId)
+    onChange(types.filter((type) => type.id !== deleteType.id), resources.filter((item) => item.typeId !== deleteType.id))
+  }
+
+  async function removeResource() {
+    if (!deleteResource) return
+    await deleteLocalFilesForEntity('knowledge', deleteResource.id, spaceId)
+    onChange(types, resources.filter((item) => item.id !== deleteResource.id))
+    if (detail?.id === deleteResource.id) setDetail(null)
+  }
+
   function moveType(targetId: string) {
     if (!draggedTypeId || draggedTypeId === targetId) return
     const from = types.findIndex((type) => type.id === draggedTypeId); const to = types.findIndex((type) => type.id === targetId); if (from < 0 || to < 0) return
     const next = [...types]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); onChange(next, resources); setDraggedTypeId(null)
   }
   function formatSize(size: number) { if (size < 1024) return `${size} B`; if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`; return `${(size / (1024 * 1024)).toFixed(1)} MB` }
-  function openUpload(typeId: string) { setSelectedTypeId(typeId); setResourceName(''); setSelectedFiles([]); setError(''); setShowUpload(true) }
+  function openUpload(typeId: string) { setSelectedTypeId(typeId); setResourceName(''); attachmentDraft.reset(); setError(''); setShowUpload(true) }
   function csvRows(text: string) { return text.split(/\r?\n/).filter(Boolean).map((line) => line.split(',').map((cell) => cell.trim())) }
 
   return <div className="collection-page collection-page--board"><Layout height="fill" header={<LayoutHeader padding={2}><div className="collection-board-toolbar"><div className="collection-board-title">知识库</div><Button label="新增类型" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => { setError(''); setShowCreateType(true) }} /></div></LayoutHeader>} content={<LayoutContent padding={0}><div className="collection-board-scroll">
@@ -184,9 +181,9 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
       </Card> })}
     </div></LayoutContent>} />
     {showCreateType && <WorkspaceOverlay label="新增知识库类型" onClose={() => setShowCreateType(false)}><div className="modal collection-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">新增知识库类型</Heading><div className="field-label">类型名称</div><TextInput label="类型名称" isLabelHidden width="100%" value={typeName} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addType() } }} placeholder="例如：产品方法论" hasAutoFocus onChange={(nextValue) => { setTypeName(nextValue); setError('') }} />{error && <Banner status="error" title={<>{error}</>} />}<div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setShowCreateType(false)} /><Button label="创建类型" variant="primary" type="button" onClick={addType} /></div></div></WorkspaceOverlay>}
-    {showUpload && <WorkspaceOverlay label="上传资料" onClose={() => !uploading && setShowUpload(false)}><div className="modal modal--wide collection-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">上传资料</Heading><div className="field-label">资料类型</div><Selector label="所属类型" isLabelHidden width="100%" value={selectedTypeId} onChange={setSelectedTypeId} isDisabled={uploading} options={types.map(({ id, name }) => ({ value: id, label: name }))} /><div className="field-label collection-field-gap">资料名称 <span className="field-hint">单个文件时可自定义</span></div><TextInput label="资料名称" isLabelHidden width="100%" value={resourceName} placeholder="可选，默认使用文件名" isDisabled={uploading} onChange={setResourceName} /><div className="field-label collection-field-gap">选择文件 <span className="field-required">*</span></div><AttachmentPicker label="选择资料文件" accept="image/*,.txt,.md,.markdown,.csv,.pdf,.doc,.docx,.xls,.xlsx" description="支持图片、文档、表格和 PDF，最多 20 个文件。" onFiles={onFileChange} isDisabled={uploading} />{selectedFiles.length > 0 && <div className="knowledge-upload-list">{selectedFiles.map((file, index) => <div className="knowledge-upload-item" key={`${file.name}-${file.lastModified}-${index}`}><div className="knowledge-upload-item__meta"><span>{file.name}</span><small>{formatSize(file.size)}</small></div><IconButton label={`移除 ${file.name}`} variant="ghost" className="knowledge-upload-item__remove" type="button" onClick={() => removeSelectedFile(index)} isDisabled={uploading} size="sm" icon={<Icon name="close" size={13} />} /></div>)}</div>}{uploading && <div className="upload-progress" role="status">正在读取 {selectedFiles.length} 个文件…</div>}{error && <Banner status="error" title={<>{error}</>} />}<div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setShowUpload(false)} isDisabled={uploading} /><Button label={`上传 ${selectedFiles.length || ''} 个文件`} variant="primary" type="button" onClick={addResource} isDisabled={uploading || !selectedFiles.length} isLoading={uploading} /></div></div></WorkspaceOverlay>}
-    {detail && <WorkspaceOverlay label={editing ? '编辑资料' : detail.name} onClose={() => setDetail(null)}><div className="modal modal--wide collection-detail-modal knowledge-detail-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">{editing ? '编辑资料' : detail.name}</Heading><div className="collection-detail__meta">{types.find((type) => type.id === detail.typeId)?.name} · {detail.fileName} · {formatSize(detail.size)}</div><FileAttachmentList files={[{ id: detail.id, fileId: detail.fileId, name: detail.fileName, type: detail.mimeType, mimeType: detail.mimeType, size: detail.size, url: detail.fileUrl || detail.dataUrl, kind: isImage(detail) ? 'image' : 'file', relativePath: detail.relativePath }]} compact /><div className="knowledge-preview">{loadingPreview ? <div className="knowledge-unsupported">正在解析资料…</div> : isImage(detail) && <img src={detail.fileUrl || detail.dataUrl} alt={detail.name} style={{ transform: `rotate(${rotation}deg) scale(1)`, maxWidth: '100%', maxHeight: 360 }} />}{!loadingPreview && isPdf(detail) && <iframe title={detail.name} src={detail.fileUrl || detail.dataUrl} className="knowledge-pdf-frame" />}{!loadingPreview && isDocx(detail) && <div className="knowledge-docx-preview" dangerouslySetInnerHTML={{ __html: editorHtml }} />}{!loadingPreview && isText(detail) && (editing ? <TextArea label="资料正文" value={editorText} isLabelHidden width="100%" rows={12} onChange={setEditorText} /> : extension(detail.fileName) === 'csv' ? <Table density="compact" className="knowledge-csv-table"><TableBody>{csvRows(editorText).map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody></Table> : <pre className="knowledge-text-preview">{editorText}</pre>)}{!loadingPreview && isSpreadsheet(detail) && <Table density="compact" className="knowledge-csv-table"><TableBody>{sheetRows.map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => editing ? <TableCell key={cellIndex}><TextInput label={`第 ${rowIndex + 1} 行，第 ${cellIndex + 1} 列`} value={cell} isLabelHidden width="100%" size="sm" onChange={(nextValue) => setSheetRows((current) => current.map((currentRow, currentRowIndex) => currentRowIndex === rowIndex ? currentRow.map((currentCell, currentCellIndex) => currentCellIndex === cellIndex ? nextValue : currentCell) : currentRow))} /></TableCell> : <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody></Table>}{!loadingPreview && !isImage(detail) && !isPdf(detail) && !isText(detail) && !isDocx(detail) && !isSpreadsheet(detail) && <div className="knowledge-unsupported"><Icon name="doc" size={22} /><div>当前格式支持在线预览和下载，暂不支持编辑。</div><span>可下载后使用本地 Office 或其他工具编辑。</span></div>}</div>{editing && <><div className="field-label collection-field-gap">资料名称</div><TextInput label="资料名称" value={editorName} isLabelHidden width="100%" onChange={setEditorName} /></>}{error && <Banner status="error" title={<>{error}</>} />}<div className="modal__actions"><a className="btn-ghost knowledge-download" href={detail.fileUrl || detail.dataUrl} download={detail.fileName}>下载资料</a><Button label="删除" variant="ghost" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteResource(detail)} className="btn-ghost--danger" />{canEdit(detail) && !editing && <Button label="编辑" variant="ghost" type="button" onClick={() => setEditing(true)} />}{editing && isImage(detail) && <Button label="旋转" variant="ghost" type="button" onClick={() => setRotation((value) => value + 90)} />}{editing && <Button label="保存" variant="primary" type="button" onClick={saveDetail} />}{!editing && <Button label="关闭" variant="primary" type="button" onClick={() => setDetail(null)} />}</div></div></WorkspaceOverlay>}
-    {deleteType && <WorkspaceOverlay label="确认删除类型？" onClose={() => setDeleteType(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认删除类型？</Heading><div className="delete-confirm-modal__text">删除「{deleteType.name}」后，该类型下的资料也会一并移除。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteType(null)} /><Button label="确认删除" variant="destructive" type="button" onClick={removeType} /></div></div></WorkspaceOverlay>}
-    {deleteResource && <WorkspaceOverlay label="确认删除资料？" onClose={() => setDeleteResource(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认删除资料？</Heading><div className="delete-confirm-modal__text">删除「{deleteResource.name}」后无法恢复。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteResource(null)} /><Button label="确认删除" variant="destructive" type="button" onClick={removeResource} /></div></div></WorkspaceOverlay>}
+    {showUpload && <WorkspaceOverlay label="上传资料" onClose={() => !uploading && setShowUpload(false)}><div className="modal modal--wide collection-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">上传资料</Heading><div className="field-label">资料类型</div><Selector label="所属类型" isLabelHidden width="100%" value={selectedTypeId} onChange={setSelectedTypeId} isDisabled={uploading} options={types.map(({ id, name }) => ({ value: id, label: name }))} /><div className="field-label collection-field-gap">资料名称 <span className="field-hint">单个文件时可自定义</span></div><TextInput label="资料名称" isLabelHidden width="100%" value={resourceName} placeholder="可选，默认使用文件名" isDisabled={uploading} onChange={setResourceName} /><div className="field-label collection-field-gap">选择文件 <span className="field-required">*</span></div><AttachmentPicker label="选择资料文件" accept="image/*,.txt,.md,.markdown,.csv,.pdf,.doc,.docx,.xls,.xlsx" description="支持图片、文档、表格和 PDF，最多 20 个文件。" files={selectedFiles} onRemove={attachmentDraft.remove} onFiles={attachmentDraft.add} isDisabled={uploading} />{attachmentDraft.error && <Banner status="error" title={<>{attachmentDraft.error}</>} />}{uploading && <div className="upload-progress" role="status">正在读取 {selectedFiles.length} 个文件…</div>}{error && <Banner status="error" title={<>{error}</>} />}<div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setShowUpload(false)} isDisabled={uploading} /><Button label={`上传 ${selectedFiles.length || ''} 个文件`} variant="primary" type="button" onClick={addResource} isDisabled={uploading || !selectedFiles.length} isLoading={uploading} /></div></div></WorkspaceOverlay>}
+    {detail && <WorkspaceOverlay label={editing ? '编辑资料' : detail.name} onClose={() => setDetail(null)}><div className="modal modal--wide collection-detail-modal knowledge-detail-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">{editing ? '编辑资料' : detail.name}</Heading><div className="collection-detail__meta">{types.find((type) => type.id === detail.typeId)?.name} · {detail.fileName} · {formatSize(detail.size)}</div><FileAttachmentList files={[{ id: detail.id, fileId: detail.fileId, name: detail.fileName, type: detail.mimeType, mimeType: detail.mimeType, size: detail.size, url: detail.fileUrl || detail.dataUrl, kind: isImage(detail) ? 'image' : 'file', relativePath: detail.relativePath }]} compact /><div className="knowledge-preview">{loadingPreview ? <div className="knowledge-unsupported">正在解析资料…</div> : isImage(detail) && <img src={detail.fileUrl || detail.dataUrl} alt={detail.name} style={{ transform: `rotate(${rotation}deg) scale(1)`, maxWidth: '100%', maxHeight: 360 }} />}{!loadingPreview && isPdf(detail) && <iframe title={detail.name} src={detail.fileUrl || detail.dataUrl} className="knowledge-pdf-frame" />}{!loadingPreview && isDocx(detail) && <div className="knowledge-docx-preview" dangerouslySetInnerHTML={{ __html: editorHtml }} />}{!loadingPreview && isText(detail) && (editing ? <TextArea label="资料正文" value={editorText} isLabelHidden width="100%" rows={12} onChange={setEditorText} /> : extension(detail.fileName) === 'csv' ? <Table density="compact" className="knowledge-csv-table"><TableBody>{csvRows(editorText).map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody></Table> : <pre className="knowledge-text-preview">{editorText}</pre>)}{!loadingPreview && isSpreadsheet(detail) && <Table density="compact" className="knowledge-csv-table"><TableBody>{sheetRows.map((row, rowIndex) => <TableRow key={rowIndex}>{row.map((cell, cellIndex) => editing ? <TableCell key={cellIndex}><TextInput label={`第 ${rowIndex + 1} 行，第 ${cellIndex + 1} 列`} value={cell} isLabelHidden width="100%" size="sm" onChange={(nextValue) => setSheetRows((current) => current.map((currentRow, currentRowIndex) => currentRowIndex === rowIndex ? currentRow.map((currentCell, currentCellIndex) => currentCellIndex === cellIndex ? nextValue : currentCell) : currentRow))} /></TableCell> : <TableCell key={cellIndex}>{cell}</TableCell>)}</TableRow>)}</TableBody></Table>}{!loadingPreview && !isImage(detail) && !isPdf(detail) && !isText(detail) && !isDocx(detail) && !isSpreadsheet(detail) && <div className="knowledge-unsupported"><Icon name="doc" size={22} /><div>当前格式支持在线预览和下载，暂不支持编辑。</div><span>可下载后使用本地 Office 或其他工具编辑。</span></div>}</div>{editing && <><div className="field-label collection-field-gap">资料名称</div><TextInput label="资料名称" value={editorName} isLabelHidden width="100%" onChange={setEditorName} /></>}{error && <Banner status="error" title={<>{error}</>} />}<div className="modal__actions"><a className="btn-ghost knowledge-download" href={detail.fileUrl || detail.dataUrl} download={detail.fileName}>下载资料</a><Button label="删除" variant="ghost" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteResource(detail)} className="btn-ghost--danger" />{canEdit(detail) && !editing && <Button label="编辑" variant="ghost" type="button" onClick={() => setEditing(true)} />}{editing && isImage(detail) && <Button label="旋转" variant="ghost" type="button" onClick={() => setRotation((value) => value + 90)} />}{editing && <Button label="保存" variant="primary" type="button" onClick={() => void saveDetail().catch((cause) => setError(cause instanceof Error ? cause.message : '资料保存失败'))} />}{!editing && <Button label="关闭" variant="primary" type="button" onClick={() => setDetail(null)} />}</div></div></WorkspaceOverlay>}
+    {deleteType && <ConfirmDataDeletion title={'删除类型「' + deleteType.name + '」？'} onClose={() => setDeleteType(null)} onDelete={removeType} />}
+    {deleteResource && <ConfirmDataDeletion title={'删除资料「' + deleteResource.name + '」？'} onClose={() => setDeleteResource(null)} onDelete={removeResource} />}
   </div>
 }

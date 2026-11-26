@@ -1,6 +1,8 @@
 import { Heading } from '@astryxdesign/core/Text'
 import { Banner } from '@astryxdesign/core/Banner'
 import { NumberInput } from '@astryxdesign/core/NumberInput'
+import { useAttachmentDraft } from '../lib/useAttachmentDraft'
+import ConfirmDataDeletion from './ConfirmDataDeletion'
 import AttachmentPicker from './AttachmentPicker'
 import WorkspaceDialog, { WorkspaceOverlay } from './WorkspaceDialog'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
@@ -16,7 +18,7 @@ import PriorityBadge from './PriorityBadge'
 import DatePicker from './DatePicker'
 import DateRangeField from './DateRangeField'
 import { TASK_STATUSES, type ProjectIssue, type ProjectIssueStatus, type ProjectTask, type ProjectTaskAttachment, type TaskStatus } from '../lib/store'
-import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
+import { deleteLocalFile } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 import RichTextField, { RichTextContent } from './RichTextField'
 
@@ -48,7 +50,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
   const [draftStartDate, setDraftStartDate] = useState(task.startDate || '')
   const [draftEndDate, setDraftEndDate] = useState(task.endDate || '')
   const [deleteAttachment, setDeleteAttachment] = useState<ProjectTaskAttachment | null>(null)
-  const [attachmentError, setAttachmentError] = useState('')
+  const attachmentDraft = useAttachmentDraft({ maxSize: 15, maxTotal: 50 })
   const bodyRef = useRef<HTMLElement>(null)
   const taskIssues = issues.filter((issue) => issue.taskId === task.id).sort((a, b) => b.createdAt - a.createdAt)
   const openIssue = taskIssues.find((issue) => issue.id === openIssueId)
@@ -64,49 +66,34 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
     setDraftEndDate(task.endDate || '')
   }, [task.id])
 
-  function saveTask() {
+  async function saveTask() {
     const name = draftName.trim()
     if (!name) return
-    onUpdateTask(task.id, {
+    const saved = await attachmentDraft.save({
+      spaceId, entityType: 'task', entityId: task.id,
+      pathSegments: ['项目', projectName || task.projectId, '任务', name],
+    }, (attachments) => onUpdateTask(task.id, {
       name,
       content: draftContent.trim(),
       startDate: draftStartDate,
       endDate: draftEndDate,
-    })
-    setEditing(false)
+      ...(attachments.length ? { attachments: [...(task.attachments || []), ...attachments] } : {}),
+    }))
+    if (saved) setEditing(false)
   }
 
   function cancelEditing() {
+    if (attachmentDraft.saving) return
     setDraftName(task.name)
     setDraftContent(task.content)
     setDraftStartDate(task.startDate || '')
     setDraftEndDate(task.endDate || '')
+    attachmentDraft.reset()
     setEditing(false)
   }
 
-  async function addAttachments(files: File[]) {
-    if (!files.length) return
-    const existing = task.attachments || []
-    const incoming = files.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
-    if (incoming.length !== files.length) setAttachmentError('空文件或超过 15 MB 的文件未添加')
-    if (existing.length + incoming.length > 20) {
-      setAttachmentError('任务最多保留 20 个附件')
-      return
-    }
-    if (existing.reduce((total, item) => total + item.size, 0) + incoming.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024) {
-      setAttachmentError('任务附件总大小不能超过 50 MB')
-      return
-    }
-    if (incoming.length === files.length) setAttachmentError('')
-    const results = await Promise.allSettled(incoming.map((file) => uploadLocalFile(file, { spaceId, entityType: 'task', entityId: task.id, pathSegments: ['项目', projectName || task.projectId, '任务', task.name] })))
-    const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTaskAttachment[]
-    const failed = results.length - attachments.length
-    if (attachments.length) onUpdateTask(task.id, { attachments: [...(task.attachments || []), ...attachments] })
-    if (failed) setAttachmentError(`${failed} 个文件上传失败，请确认已选择本地文件夹并授予写入权限`)
-  }
-
-  function removeAttachment(attachment: ProjectTaskAttachment) {
-    void deleteLocalFile(attachment.fileId || attachment.id)
+  async function removeAttachment(attachment: ProjectTaskAttachment) {
+    await deleteLocalFile(attachment.fileId || attachment.id)
     onUpdateTask(task.id, { attachments: (task.attachments || []).filter((item) => item.id !== attachment.id) })
     setDeleteAttachment(null)
   }
@@ -131,7 +118,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
     <div className="requirement-detail-page project-task-detail-page">
       <header className="requirement-detail-page__head">
         <div className="requirement-detail-page__head-main">
-          <IconButton label="返回项目" variant="ghost" size="sm" icon={<Icon name="arrowLeft" size={16} />} type="button" onClick={onClose} className="requirement-detail-page__back" />
+          <IconButton label="返回项目" variant="ghost" size="sm" icon={<Icon name="arrowLeft" size={16} />} type="button" isDisabled={attachmentDraft.saving} onClick={onClose} className="requirement-detail-page__back" />
           <div className="requirement-detail-page__identity">
             <div className="requirement-detail-page__eyebrow">任务详情</div>
             <h1>
@@ -152,7 +139,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
         {tab === 'content' && (
           <div className="project-task-content" id="task-content-panel" role="tabpanel" aria-label="任务内容">
             <div className="project-task-content__toolbar">
-              {!editing ? <IconButton label="编辑任务" variant="ghost" size="sm" icon={<Icon name="edit" size={15} />} type="button" onClick={() => setEditing(true)} /> : <><IconButton label="保存任务" variant="ghost" size="sm" icon={<Icon name="check" size={15} />} type="button" onClick={saveTask} /><IconButton label="取消编辑" variant="ghost" size="sm" icon={<Icon name="close" size={15} />} type="button" onClick={cancelEditing} /></>}
+              {!editing ? <IconButton label="编辑任务" variant="ghost" size="sm" icon={<Icon name="edit" size={15} />} type="button" onClick={() => setEditing(true)} /> : <><IconButton label="保存任务" variant="ghost" size="sm" icon={<Icon name="check" size={15} />} type="button" isLoading={attachmentDraft.saving} onClick={() => void saveTask()} /><IconButton label="取消编辑" variant="ghost" size="sm" icon={<Icon name="close" size={15} />} type="button" isDisabled={attachmentDraft.saving} onClick={cancelEditing} /></>}
             </div>
             <section className="project-task-section">
               <div className="project-task-section__label">任务标题</div>
@@ -198,9 +185,9 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
             </section>
             <section className="project-task-section">
               <div className="project-task-section__label">任务相关文件</div>
-              {task.attachments && task.attachments.length > 0 ? <FileAttachmentList files={task.attachments} onDelete={editing ? (attachment) => setDeleteAttachment(attachment as ProjectTaskAttachment) : undefined} /> : <div className="project-task-section__text">暂无相关文件</div>}
-              {attachmentError && <Banner status="error" title={<>{attachmentError}</>} />}
-              {editing && <AttachmentPicker label="添加任务附件" onFiles={(files) => void addAttachments(files)} />}
+              {task.attachments && task.attachments.length > 0 ? <FileAttachmentList files={task.attachments} onDelete={editing && !attachmentDraft.saving ? (attachment) => setDeleteAttachment(attachment as ProjectTaskAttachment) : undefined} /> : <div className="project-task-section__text">暂无相关文件</div>}
+              {attachmentDraft.error && <Banner status="error" title={<>{attachmentDraft.error}</>} />}
+              {editing && <AttachmentPicker label="添加任务附件" files={attachmentDraft.files} onRemove={attachmentDraft.remove} isDisabled={attachmentDraft.saving} onFiles={(files) => attachmentDraft.add(files, task.attachments)} />}
             </section>
           </div>
         )}
@@ -236,7 +223,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
           {openIssue.description && <RichTextContent value={openIssue.description} className="project-issue__description" />}
         </VStack>
       </WorkspaceDialog>}
-      {deleteAttachment && <WorkspaceOverlay label="确认删除附件？" onClose={() => setDeleteAttachment(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认删除附件？</Heading><div className="delete-confirm-modal__text">删除「{deleteAttachment.name}」后无法恢复。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteAttachment(null)} /><Button label="确认删除" variant="destructive" type="button" onClick={() => removeAttachment(deleteAttachment)} /></div></div></WorkspaceOverlay>}
+      {deleteAttachment && <ConfirmDataDeletion title={'删除附件「' + deleteAttachment.name + '」？'} onClose={() => setDeleteAttachment(null)} onDelete={() => removeAttachment(deleteAttachment)} />}
     </div>
   )
 }

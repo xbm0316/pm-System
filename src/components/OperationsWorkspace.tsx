@@ -1,21 +1,24 @@
-import { Heading } from '@astryxdesign/core/Text'
+import { LayoutContent } from '@astryxdesign/core/Layout'
 import { NumberInput } from '@astryxdesign/core/NumberInput'
 import DatePicker from './DatePicker'
+import ConfirmDataDeletion from './ConfirmDataDeletion'
 import AttachmentPicker from './AttachmentPicker'
 import { Tab, TabList } from '@astryxdesign/core/TabList'
-import { WorkspaceOverlay } from './WorkspaceDialog'
+import WorkspaceDialog from './WorkspaceDialog'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { Selector } from '@astryxdesign/core/Selector'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Banner } from '@astryxdesign/core/Banner'
+import { useAttachmentDraft } from '../lib/useAttachmentDraft'
 import type { FormEvent, ReactNode } from 'react'
 import Icon from './Icon'
 import OperationsKnowledgeBoard, { type TutorialCard, type TutorialType } from './OperationsKnowledgeBoard'
 import { MENUS, uid } from '../lib/store'
-import { deleteLocalFile, getLocalFile, localFileUrl, uploadLocalFile, type LocalAttachment } from '../lib/localFiles'
+import { deleteLocalFile, deleteLocalFilesForEntity, getLocalFile, localFileUrl, type LocalAttachment } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 
 interface OperationsWorkspaceProps { spaceId: string; ownerPhone: string; activeMenu: string; searchQuery?: string }
@@ -70,60 +73,142 @@ function initialCards(): TutorialCard[] { const now = Date.now(); return tutoria
 function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
 function readState(ownerPhone: string, spaceId: string): OperationsState { try { const raw = localStorage.getItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`); if (!raw) return initialState(); const parsed = JSON.parse(raw) as Partial<OperationsState>; return { tutorialCards: Array.isArray(parsed.tutorialCards) && parsed.tutorialCards.length ? parsed.tutorialCards : initialCards(), products: Array.isArray(parsed.products) ? parsed.products.map((item) => ({ ...item, images: Array.isArray(item.images) ? item.images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) : (item.image ? [item.image] : []) })) : [], campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [], reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({ ...item, attachments: Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is LocalAttachment => Boolean(entry && typeof entry === 'object' && (entry as LocalAttachment).id)).map((entry) => ({ ...entry, url: entry.fileId ? localFileUrl(entry.fileId) : entry.url })) : [] })) : [], knowledgeTypes: Array.isArray(parsed.knowledgeTypes) && parsed.knowledgeTypes.length ? parsed.knowledgeTypes : tutorialTypes } } catch { return initialState() } }
 function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
-function OpsModal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) { return <WorkspaceOverlay label={title} onClose={onClose}><div className={`modal operations-modal${wide ? ' operations-modal--wide' : ''}`}><div className="operations-modal__head"><Heading level={3} accessibilityLevel={2} className="modal__title">{title}</Heading><IconButton label="关闭" variant="ghost" size="sm" icon={<Icon name="close" size={16} />} type="button" onClick={onClose} /></div>{children}</div></WorkspaceOverlay> }
+function OpsModal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <WorkspaceDialog title={title} onClose={onClose} purpose="info" width={760}>
+      <LayoutContent label={title}>{children}</LayoutContent>
+    </WorkspaceDialog>
+  )
+}
 function Field({ label, children, required = false }: { label: string; children: ReactNode; required?: boolean }) {
   return <div className="operations-field"><span className="field-label">{label}{required && <span className="field-required"> *</span>}</span>{children}</div>
 }
-function FileNames({ spaceId, entityId, files, onChange }: { spaceId: string; entityId: string; files: LocalAttachment[]; onChange: (files: LocalAttachment[]) => void }) { const [uploading, setUploading] = useState(false); async function addFiles(selected: File[]) { if (!selected) return; setUploading(true); const results = await Promise.allSettled(Array.from(selected).slice(0, 20 - files.length).map((file) => uploadLocalFile(file, { spaceId, entityType: 'ops-review', entityId, pathSegments: ['独立站运营', '复盘', entityId] }))); const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []); if (uploaded.length) onChange([...files, ...uploaded]); setUploading(false) } return <div className="operations-files"><AttachmentPicker label="添加附件" isLoading={uploading} onFiles={(files) => void addFiles(files)} />{files.length > 0 && <FileAttachmentList files={files} onDelete={(file) => { void deleteLocalFile(file.fileId || file.id); onChange(files.filter((item) => item.id !== file.id)) }} compact />}</div> }
-function ProductImagePicker({ spaceId, productId, productName, images, fileIds, imagePaths, onChange }: { spaceId: string; productId: string; productName: string; images: string[]; fileIds: string[]; imagePaths: string[]; onChange: (images: string[], fileIds: string[], imagePaths: string[]) => void }) {
+function ProductImagePicker({ images, fileIds, imagePaths, onChange, attachments }: {
+  images: string[]
+  fileIds: string[]
+  imagePaths: string[]
+  onChange: (images: string[], fileIds: string[], imagePaths: string[]) => void
+  attachments: ReturnType<typeof useAttachmentDraft>
+}) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [resolvedPaths, setResolvedPaths] = useState<string[]>(imagePaths)
-  useEffect(() => { let cancelled = false; void Promise.all(fileIds.map(async (id, index) => imagePaths[index] || (await getLocalFile(id).catch(() => null))?.relativePath || '')).then((paths) => { if (!cancelled) setResolvedPaths(paths) }); return () => { cancelled = true } }, [fileIds, imagePaths])
-  async function addFiles(files: File[]) {
-    if (!files) return
-    const results = await Promise.allSettled(Array.from(files).filter((file) => file.type.startsWith('image/')).map((file) => uploadLocalFile(file, { spaceId, entityType: 'product', entityId: productId, pathSegments: ['选品', productName || productId, '商品图片'] })))
-    const uploaded = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-    if (uploaded.length) onChange([...images, ...uploaded.map((item) => item.url)], [...fileIds, ...uploaded.map((item) => item.fileId)], [...resolvedPaths, ...uploaded.map((item) => item.relativePath || '')])
-  }
-  async function removeImage(index: number) {
-    const fileId = fileIds[index]
-    if (fileId) await deleteLocalFile(fileId)
+  const [pendingUrls, setPendingUrls] = useState<string[]>([])
+  useEffect(() => {
+    const urls = attachments.files.map((file) => URL.createObjectURL(file))
+    setPendingUrls(urls)
+    return () => urls.forEach((url) => URL.revokeObjectURL(url))
+  }, [attachments.files])
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all(fileIds.map(async (id, index) => imagePaths[index] || (await getLocalFile(id).catch(() => null))?.relativePath || '')).then((paths) => { if (!cancelled) setResolvedPaths(paths) })
+    return () => { cancelled = true }
+  }, [fileIds, imagePaths])
+  function removeImage(index: number) {
+    if (attachments.saving) return
+    if (index >= images.length) { attachments.remove(index - images.length); return }
     onChange(images.filter((_, current) => current !== index), fileIds.filter((_, current) => current !== index), resolvedPaths.filter((_, current) => current !== index))
   }
-  useEffect(() => { if (activeIndex >= images.length) setActiveIndex(Math.max(images.length - 1, 0)) }, [activeIndex, images.length])
+  const previews = [...images, ...pendingUrls]
+  useEffect(() => { if (activeIndex >= previews.length) setActiveIndex(Math.max(previews.length - 1, 0)) }, [activeIndex, previews.length])
   return <div className="operations-image-picker">
 
     <div className="operations-image-picker__preview">
-      {images[activeIndex] ? <img src={images[activeIndex]} alt={`商品主图 ${activeIndex + 1}`} /> : <div className="operations-image-picker__empty"><Icon name="image" size={30} /><strong>上传商品主图</strong><span>建议使用清晰的商品图片</span></div>}
-      {images.length > 1 && <><IconButton label="上一张" icon={<Icon name="chevronLeft" size={16} />} variant="ghost" size="sm" className="operations-image-picker__nav operations-image-picker__nav--prev" type="button" onClick={() => setActiveIndex((activeIndex - 1 + images.length) % images.length)} /><IconButton label="下一张" icon={<Icon name="chevronRight" size={16} />} variant="ghost" size="sm" className="operations-image-picker__nav operations-image-picker__nav--next" type="button" onClick={() => setActiveIndex((activeIndex + 1) % images.length)} /></>}
+      {previews[activeIndex] ? <img src={previews[activeIndex]} alt={`商品主图 ${activeIndex + 1}`} /> : <div className="operations-image-picker__empty"><Icon name="image" size={30} /><strong>上传商品主图</strong><span>建议使用清晰的商品图片</span></div>}
+      {previews.length > 1 && <><IconButton label="上一张" icon={<Icon name="chevronLeft" size={16} />} variant="ghost" size="sm" className="operations-image-picker__nav operations-image-picker__nav--prev" type="button" onClick={() => setActiveIndex((activeIndex - 1 + previews.length) % previews.length)} /><IconButton label="下一张" icon={<Icon name="chevronRight" size={16} />} variant="ghost" size="sm" className="operations-image-picker__nav operations-image-picker__nav--next" type="button" onClick={() => setActiveIndex((activeIndex + 1) % previews.length)} /></>}
     </div>
     <div className="operations-image-picker__footer"><div className="operations-image-picker__list">
-      {images.map((image, index) => <div className={`operations-image-picker__item${index === activeIndex ? ' is-active' : ''}`} key={`${image.slice(0, 24)}-${index}`}><IconButton label={`查看商品图 ${index + 1}`} icon={<img src={image} alt={`商品图 ${index + 1}`} />} variant="ghost" size="sm" className="operations-image-picker__select" type="button" onClick={() => setActiveIndex(index)} /><IconButton label={`删除商品图 ${index + 1}`} icon={<Icon name="close" size={11} />} variant="ghost" size="sm" className="operations-image-picker__remove" type="button" onClick={() => void removeImage(index)} /><small className="operations-image-picker__path">{resolvedPaths[index] || '路径暂不可用'}</small></div>)}
+      {previews.map((image, index) => <div className={`operations-image-picker__item${index === activeIndex ? ' is-active' : ''}`} key={`${image.slice(0, 24)}-${index}`}><IconButton label={`查看商品图 ${index + 1}`} icon={<img src={image} alt={`商品图 ${index + 1}`} />} variant="ghost" size="sm" className="operations-image-picker__select" type="button" onClick={() => setActiveIndex(index)} /><IconButton label={`删除商品图 ${index + 1}`} icon={<Icon name="close" size={11} />} variant="ghost" size="sm" className="operations-image-picker__remove" type="button" isDisabled={attachments.saving} onClick={() => removeImage(index)} /><small className="operations-image-picker__path">{index >= images.length ? '待保存' : resolvedPaths[index] || '路径暂不可用'}</small></div>)}
 
-    </div><AttachmentPicker label="添加图片" accept="image/*" description="首张图片将作为商品主图。" onFiles={(files) => void addFiles(files)} /><FileAttachmentList files={images.map((image, index) => ({ id: fileIds[index] || `${productId}-${index}`, fileId: fileIds[index], name: `商品图片 ${index + 1}`, url: image, kind: 'image' as const, relativePath: resolvedPaths[index] }))} compact /></div>
+    </div><AttachmentPicker label="添加图片" accept="image/*" description="首张图片将作为商品主图。" files={attachments.files} onRemove={attachments.remove} isDisabled={attachments.saving} onFiles={attachments.add} /><FileAttachmentList files={images.map((image, index) => ({ id: fileIds[index] || 'product-image-' + index, fileId: fileIds[index], name: `商品图片 ${index + 1}`, url: image, kind: 'image' as const, relativePath: resolvedPaths[index] }))} compact /></div>
   </div>
 }
 
 export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
   const [state, setState] = useState<OperationsState>(() => readState(ownerPhone, spaceId))
+  const stateRef = useRef(state)
+  const productAttachments = useAttachmentDraft({ maxFiles: Number.POSITIVE_INFINITY })
+  const reviewAttachments = useAttachmentDraft()
   const [productDraft, setProductDraft] = useState<OpsProduct | null>(null)
   const [campaignDraft, setCampaignDraft] = useState<OpsCampaign | null>(null)
   const [reviewDraft, setReviewDraft] = useState<OpsReview | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'campaign' | 'ops-review'; id: string; name: string } | null>(null)
   const [productImageIndexes, setProductImageIndexes] = useState<Record<string, number>>({})
   const [productTab, setProductTab] = useState<'basic' | 'pricing'>('basic')
   const menus = MENUS['独立站电商运营']
   const query = searchQuery.trim().toLocaleLowerCase()
   const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
-  useEffect(() => { setState(readState(ownerPhone, spaceId)) }, [ownerPhone, spaceId])
-  useEffect(() => { localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(state)) }, [ownerPhone, spaceId, state])
+  useEffect(() => {
+    const next = readState(ownerPhone, spaceId)
+    stateRef.current = next
+    setState(next)
+  }, [ownerPhone, spaceId])
+
+  function updateState(updater: (current: OperationsState) => OperationsState) {
+    const next = updater(stateRef.current)
+    localStorage.setItem(STORAGE_PREFIX + ownerPhone + '.' + spaceId, JSON.stringify(next))
+    stateRef.current = next
+    setState(next)
+  }
   const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier} ${item.conclusion}`.toLocaleLowerCase().includes(query)), [query, state.products])
   const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
-  function newProduct() { setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', inventory: 0, image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', conclusion: '继续研究', attachments: [], createdAt: Date.now() }) }
-  function saveProduct(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const draft = productDraft; if (!draft?.name.trim() || (productTab === 'basic' && !draft.description) || event.currentTarget.querySelector('[aria-invalid="true"]')) return; setState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), draft] })); setProductDraft(null) }
+  function newProduct() { productAttachments.reset(); setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', inventory: 0, image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', conclusion: '继续研究', attachments: [], createdAt: Date.now() }) }
+  function closeProduct() {
+    if (productAttachments.saving) return
+    productAttachments.reset()
+    setProductDraft(null)
+  }
+  async function saveProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const draft = productDraft
+    if (!draft?.name.trim() || (productTab === 'basic' && !draft.description) || event.currentTarget.querySelector('[aria-invalid="true"]')) return
+    const previous = stateRef.current.products.find((item) => item.id === draft.id)
+    const saved = await productAttachments.save({ spaceId, entityType: 'product', entityId: draft.id, pathSegments: ['选品', draft.name.trim(), '商品图片'] }, (added) => {
+      const existing = draft.images || []
+      const images = [...existing, ...added.map((file) => file.url)]
+      const next = {
+        ...draft, images, image: images[0] || '',
+        imageFileIds: [...existing.map((_, index) => draft.imageFileIds?.[index] || ''), ...added.map((file) => file.fileId)],
+        imagePaths: [...existing.map((_, index) => draft.imagePaths?.[index] || ''), ...added.map((file) => file.relativePath || '')],
+      }
+      updateState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), next] }))
+    })
+    if (!saved) return
+    const removed = (previous?.imageFileIds || []).filter((id) => !draft.imageFileIds?.includes(id))
+    void Promise.allSettled(removed.map((id) => deleteLocalFile(id)))
+    setProductDraft(null)
+  }
   function newCampaign() { setCampaignDraft({ id: uid(), name: '', platform: 'Meta', productId: '', landingPage: '', dailyBudget: 0, totalBudget: 0, spend: 0, orders: 0, revenue: 0, status: '准备中', notes: '', createdAt: Date.now() }) }
-  function saveCampaign(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const draft = campaignDraft; if (!draft?.name.trim() || event.currentTarget.querySelector('[aria-invalid="true"]')) return; setState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] })); setCampaignDraft(null) }
-  function newReview() { setReviewDraft({ id: uid(), title: '', date: new Date().toISOString().slice(0, 10), scope: '教程学习', completed: '', problems: '', insight: '', decision: '继续', nextAction: '', attachments: [], createdAt: Date.now() }) }
-  function saveReview(event: FormEvent) { event.preventDefault(); const draft = reviewDraft; if (!draft || !draft.title.trim()) return; setState((current) => ({ ...current, reviews: [...current.reviews.filter((item) => item.id !== draft.id), draft] })); setReviewDraft(null) }
+  function saveCampaign(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const draft = campaignDraft; if (!draft?.name.trim() || event.currentTarget.querySelector('[aria-invalid="true"]')) return; updateState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] })); setCampaignDraft(null) }
+  function newReview() { reviewAttachments.reset(); setReviewDraft({ id: uid(), title: '', date: new Date().toISOString().slice(0, 10), scope: '教程学习', completed: '', problems: '', insight: '', decision: '继续', nextAction: '', attachments: [], createdAt: Date.now() }) }
+  function closeReview() {
+    if (reviewAttachments.saving) return
+    reviewAttachments.reset()
+    setReviewDraft(null)
+  }
+  async function saveReview(event: FormEvent) {
+    event.preventDefault()
+    const draft = reviewDraft
+    if (!draft?.title.trim()) return
+    const previous = stateRef.current.reviews.find((item) => item.id === draft.id)
+    const saved = await reviewAttachments.save({ spaceId, entityType: 'ops-review', entityId: draft.id, pathSegments: ['独立站运营', '复盘', draft.id] }, (added) => {
+      const next = { ...draft, attachments: [...draft.attachments, ...added] }
+      updateState((current) => ({ ...current, reviews: [...current.reviews.filter((item) => item.id !== draft.id), next] }))
+    })
+    if (!saved) return
+    const removed = (previous?.attachments || []).filter((file) => !draft.attachments.some((item) => item.id === file.id))
+    void Promise.allSettled(removed.map((file) => deleteLocalFile(file.fileId || file.id)))
+    setReviewDraft(null)
+  }
+  async function removeRecord() {
+    if (!deleteTarget) return
+    const { type, id } = deleteTarget
+    await deleteLocalFilesForEntity(type, id, spaceId)
+    updateState((current) => {
+      if (type === 'product') return { ...current, products: current.products.filter((item) => item.id !== id) }
+      if (type === 'ops-review') return { ...current, reviews: current.reviews.filter((item) => item.id !== id) }
+      return { ...current, campaigns: current.campaigns.filter((item) => item.id !== id) }
+    })
+  }
   function renderProducts() {
     const labels: Record<string, string> = { price: '售价', cost: '采购成本', shipping: '物流成本', paymentFee: '支付手续费', adCost: '预计投流成本', refundReserve: '退款预留' }
     return <>
@@ -138,7 +223,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
           const afterAdProfit = contribution - item.adCost
           const margin = item.price > 0 ? contribution / item.price * 100 : 0
           const breakEvenRoas = contribution > 0 ? item.price / contribution : 0
-          return <ClickableCard padding={0} className="operations-product-row" key={item.id} label={`查看商品 ${item.name}`} onClick={() => { setProductTab('basic'); setProductDraft({ ...item }) }}>
+          return <ClickableCard padding={0} className="operations-product-row" key={item.id} label={`查看商品 ${item.name}`} onClick={() => { productAttachments.reset(); setProductTab('basic'); setProductDraft({ ...item, images: item.images?.length ? item.images : item.image ? [item.image] : [] }) }}>
             <div className="operations-product-row__media">
               <div className="operations-product-media operations-product-media--row">
                 {images[imageIndex] ? <img src={images[imageIndex]} alt={item.name} /> : <div className="operations-product-placeholder"><Icon name="image" size={26} /><span>暂无商品图片</span></div>}
@@ -151,7 +236,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
               {images.length > 1 && <div className="operations-product-thumb-strip">{images.map((image, index) => <button type="button" key={`${image}-${index}`} className={`operations-product-thumb${index === imageIndex ? ' is-active' : ''}`} onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: index }))}><img src={image} alt={`${item.name} 缩略图 ${index + 1}`} /></button>)}</div>}
             </div>
             <div className="operations-product-row__body">
-              <div className="operations-product-row__top"><span className="operations-status operations-status--准备上架">{item.conclusion}</span><div className="operations-product-row__actions"><IconButton label="编辑商品" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { setProductTab('basic'); setProductDraft({ ...item }) }} /><IconButton label="删除商品" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setState((current) => ({ ...current, products: current.products.filter((product) => product.id !== item.id) }))} /></div></div>
+              <div className="operations-product-row__top"><span className="operations-status operations-status--准备上架">{item.conclusion}</span><div className="operations-product-row__actions"><IconButton label="编辑商品" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { productAttachments.reset(); setProductTab('basic'); setProductDraft({ ...item, images: item.images?.length ? item.images : item.image ? [item.image] : [] }) }} /><IconButton label="删除商品" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTarget({ type: 'product', id: item.id, name: item.name })} /></div></div>
               <h2>{item.name}</h2>
               <p className="operations-product-description">{item.description || item.evidence || '暂无商品描述和选品结论'}</p>
               <div className="operations-product-meta"><span>售价 <strong>¥{money(item.price)}</strong></span><span>库存 <strong>{item.inventory ?? 0}</strong></span><span>SKU <strong>{item.sku || '未填写'}</strong></span><span>供应商 <strong>{item.supplier?.startsWith('http') ? <a className="operations-product-source-link" href={item.supplier} target="_blank" rel="noreferrer">打开商品原链接 <Icon name="link" size={11} /></a> : (item.supplier || '未填写')}</strong></span></div>
@@ -164,8 +249,8 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
         const contribution = productDraft.price - productDraft.cost - productDraft.shipping - productDraft.paymentFee - productDraft.refundReserve
         const margin = productDraft.price > 0 ? contribution / productDraft.price * 100 : 0
         const breakEvenRoas = contribution > 0 ? productDraft.price / contribution : 0
-        return <OpsModal title={productDraft.name ? '编辑商品' : '添加商品'} onClose={() => setProductDraft(null)} wide>
-          <form className="operations-product-form" onSubmit={saveProduct}>
+        return <OpsModal title={productDraft.name ? '编辑商品' : '添加商品'} onClose={closeProduct}>
+          <form className="operations-product-form" onSubmit={(event) => void saveProduct(event)}>
             <TabList value={productTab} onChange={(tab) => setProductTab(tab === 'pricing' ? 'pricing' : 'basic')} role="tablist" hasDivider>
               <Tab value="basic" label="商品信息" panelId="ops-product-info" />
               <Tab value="pricing" label="定价与成本" panelId="ops-product-pricing" />
@@ -176,7 +261,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
               <Field label="SKU"><TextInput label="SKU" isLabelHidden width="100%" value={productDraft.sku || ''} placeholder="商品编码" onChange={(nextValue) => setProductDraft({ ...productDraft, sku: nextValue })} /></Field>
               <Field label="库存"><NumberInput label="库存" value={productDraft.inventory ?? 0} isLabelHidden width="100%" min={0} step={1} isIntegerOnly isWheelEnabled={false} onChange={(nextValue) => setProductDraft({ ...productDraft, inventory: nextValue })} /></Field>
               <Field label="商品描述" required><TextArea label="商品描述" value={productDraft.description || ''} isLabelHidden width="100%" isRequired rows={4} placeholder="商品卖点、适用人群和选品判断" onChange={(nextValue) => setProductDraft({ ...productDraft, description: nextValue })} /></Field>
-              <Field label="商品图片"><ProductImagePicker spaceId={spaceId} productId={productDraft.id} productName={productDraft.name} images={productDraft.images || []} fileIds={productDraft.imageFileIds || []} imagePaths={productDraft.imagePaths || []} onChange={(images, imageFileIds, imagePaths) => setProductDraft({ ...productDraft, images, imageFileIds, imagePaths, image: images[0] || '' })} /></Field>
+              <Field label="商品图片"><ProductImagePicker attachments={productAttachments} images={productDraft.images || []} fileIds={productDraft.imageFileIds || []} imagePaths={productDraft.imagePaths || []} onChange={(images, imageFileIds, imagePaths) => setProductDraft({ ...productDraft, images, imageFileIds, imagePaths, image: images[0] || '' })} /></Field>
             </div></section>}
             {productTab === 'pricing' && <section id="ops-product-pricing" role="tabpanel" aria-label="定价与成本" className="operations-product-form__section"><div className="operations-product-form__title">定价与成本</div><div className="operations-product-form__grid">
               {(['price', 'cost', 'shipping', 'paymentFee', 'adCost', 'refundReserve'] as const).map((key) => <Field key={key} label={labels[key]}><NumberInput label={labels[key]} value={productDraft[key]} isLabelHidden width="100%" min={0} step={0.01} isWheelEnabled={false} onChange={(nextValue) => setProductDraft({ ...productDraft, [key]: nextValue })} /></Field>)}
@@ -184,7 +269,8 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
                 options={['继续研究', '进入测试', '准备上架', '作为备选', '暂停']}
                 onChange={(conclusion) => setProductDraft({ ...productDraft, conclusion: conclusion as ProductConclusion })} />
             </div><div className="operations-calculator" aria-live="polite"><div className="operations-calculator__head"><strong>利润预估</strong><a href="https://ecomwith.com/zh/tools/pricing" target="_blank" rel="noreferrer">Ecomwith 定价工具 <Icon name="link" size={11} /></a></div><div className="operations-calculator__grid"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>贡献毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 CPA<strong>¥{money(Math.max(contribution, 0))}</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div><p>贡献利润 = 售价 − 采购 − 物流 − 手续费 − 退款预留；投流成本单独计算广告后利润。<a href="https://ecomwith.com/zh/tools/break-even-roas" target="_blank" rel="noreferrer">查看公式来源</a></p></div></section>}
-            <div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" onClick={() => setProductDraft(null)} /><Button label="保存商品" variant="primary" type="submit" isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} /></div>
+            {productAttachments.error && <Banner status="error" title={<>{productAttachments.error}</>} />}
+            <div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" isDisabled={productAttachments.saving} onClick={closeProduct} /><Button label="保存商品" variant="primary" type="submit" isLoading={productAttachments.saving} isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} /></div>
           </form>
         </OpsModal>
       })()}
@@ -212,7 +298,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
               <span className="operations-status operations-status--进行中">{item.status}</span>
               <div>
                 <IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => setCampaignDraft({ ...item })} />
-                <IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setState((current) => ({ ...current, campaigns: current.campaigns.filter((campaign) => campaign.id !== item.id) }))} />
+                <IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTarget({ type: 'campaign', id: item.id, name: item.name })} />
               </div>
             </div>
             <h2>{item.name}</h2>
@@ -227,7 +313,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
           </ClickableCard>
         }) : <div className="operations-empty">还没有投流计划，选品进入测试后可以在这里建立第一条广告记录。</div>}
       </div>
-      {campaignDraft && <OpsModal title={campaignDraft.name ? '编辑投流计划' : '新增投流计划'} onClose={() => setCampaignDraft(null)} wide>
+      {campaignDraft && <OpsModal title={campaignDraft.name ? '编辑投流计划' : '新增投流计划'} onClose={() => setCampaignDraft(null)}>
         <form className="operations-form-grid" onSubmit={saveCampaign}>
           <Field label="计划名称" required>
             <TextInput label="计划名称" value={campaignDraft.name} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setCampaignDraft({ ...campaignDraft, name: nextValue })} />
@@ -277,18 +363,22 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
       </OpsModal>}
     </>
   }
-  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><Button label="新增复盘" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newReview} /></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <ClickableCard padding={0} className="operations-data-card" key={item.id} label={`查看复盘 ${item.title}`} onClick={() => setReviewDraft({ ...item })}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => setReviewDraft({ ...item })} /><IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setState((current) => ({ ...current, reviews: current.reviews.filter((review) => review.id !== item.id) }))} /></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></ClickableCard>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={() => setReviewDraft(null)} wide><form className="operations-form-grid" onSubmit={saveReview}><Field label="复盘标题" required><TextInput label="复盘标题" value={reviewDraft.title} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setReviewDraft({ ...reviewDraft, title: nextValue })} /></Field><Field label="日期"><DatePicker label="复盘日期" value={reviewDraft.date} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, date: nextValue })} /></Field><Field label="复盘范围"><TextInput label="复盘范围" isLabelHidden width="100%" value={reviewDraft.scope} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, scope: nextValue })} /></Field><Selector label="结论" width="100%" value={reviewDraft.decision} options={['继续', '调整', '暂停']} onChange={(decision) => setReviewDraft({ ...reviewDraft, decision: decision as ReviewDecision })} /><Field label="完成了什么"><TextArea label="完成了什么" isLabelHidden width="100%" rows={4} value={reviewDraft.completed} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, completed: nextValue })} /></Field><Field label="问题与差异"><TextArea label="问题与差异" isLabelHidden width="100%" rows={4} value={reviewDraft.problems} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, problems: nextValue })} /></Field><Field label="关键洞察"><TextArea label="关键洞察" isLabelHidden width="100%" rows={4} value={reviewDraft.insight} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, insight: nextValue })} /></Field><Field label="下一步行动"><TextArea label="下一步行动" isLabelHidden width="100%" rows={4} value={reviewDraft.nextAction} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, nextAction: nextValue })} /></Field><Field label="关联资料"><FileNames spaceId={spaceId} entityId={reviewDraft.id} files={reviewDraft.attachments} onChange={(attachments) => setReviewDraft({ ...reviewDraft, attachments })} /></Field><div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" onClick={() => setReviewDraft(null)} /><Button label="保存复盘" variant="primary" type="submit" /></div></form></OpsModal>}</> }
+  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><Button label="新增复盘" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newReview} /></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <ClickableCard padding={0} className="operations-data-card" key={item.id} label={`查看复盘 ${item.title}`} onClick={() => { reviewAttachments.reset(); setReviewDraft({ ...item }) }}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { reviewAttachments.reset(); setReviewDraft({ ...item }) }} /><IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTarget({ type: 'ops-review', id: item.id, name: item.title })} /></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></ClickableCard>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={closeReview}><form className="operations-form-grid" onSubmit={(event) => void saveReview(event)}><Field label="复盘标题" required><TextInput label="复盘标题" value={reviewDraft.title} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setReviewDraft({ ...reviewDraft, title: nextValue })} /></Field><Field label="日期"><DatePicker label="复盘日期" value={reviewDraft.date} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, date: nextValue })} /></Field><Field label="复盘范围"><TextInput label="复盘范围" isLabelHidden width="100%" value={reviewDraft.scope} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, scope: nextValue })} /></Field><Selector label="结论" width="100%" value={reviewDraft.decision} options={['继续', '调整', '暂停']} onChange={(decision) => setReviewDraft({ ...reviewDraft, decision: decision as ReviewDecision })} /><Field label="完成了什么"><TextArea label="完成了什么" isLabelHidden width="100%" rows={4} value={reviewDraft.completed} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, completed: nextValue })} /></Field><Field label="问题与差异"><TextArea label="问题与差异" isLabelHidden width="100%" rows={4} value={reviewDraft.problems} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, problems: nextValue })} /></Field><Field label="关键洞察"><TextArea label="关键洞察" isLabelHidden width="100%" rows={4} value={reviewDraft.insight} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, insight: nextValue })} /></Field><Field label="下一步行动"><TextArea label="下一步行动" isLabelHidden width="100%" rows={4} value={reviewDraft.nextAction} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, nextAction: nextValue })} /></Field><Field label="关联资料"><AttachmentPicker label="添加附件" files={reviewAttachments.files} onRemove={reviewAttachments.remove} isDisabled={reviewAttachments.saving} onFiles={(files) => reviewAttachments.add(files, reviewDraft.attachments)} /><FileAttachmentList files={reviewDraft.attachments} onDelete={reviewAttachments.saving ? undefined : (file) => setReviewDraft({ ...reviewDraft, attachments: reviewDraft.attachments.filter((item) => item.id !== file.id) })} compact />{reviewAttachments.error && <Banner status="error" title={<>{reviewAttachments.error}</>} />}</Field><div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" isDisabled={reviewAttachments.saving} onClick={closeReview} /><Button label="保存复盘" variant="primary" type="submit" /></div></form></OpsModal>}</> }
   const activeMenuDef = menus.find((menu) => menu.key === activeMenu) || menus[0]
   if (activeMenu !== 'ops-products' && activeMenu !== 'ops-ads') {
     return <OperationsKnowledgeBoard
       knowledgeTypes={knowledgeTypes}
       tutorialCards={state.tutorialCards}
       searchQuery={searchQuery}
-      onChange={(update) => setState((current) => ({
+      onChange={(update) => updateState((current) => ({
         ...current,
         ...update({ knowledgeTypes: current.knowledgeTypes?.length ? current.knowledgeTypes : tutorialTypes, tutorialCards: current.tutorialCards }),
       }))}
     />
   }
-  return <div className="operations-workspace"><div className="operations-workspace__body">{activeMenu === 'ops-products' ? renderProducts() : renderAds()}</div>{activeMenuDef && <span className="sr-only">{activeMenuDef.label}</span>}</div>
+  return <div className="operations-workspace">
+    <div className="operations-workspace__body">{activeMenu === 'ops-products' ? renderProducts() : renderAds()}</div>
+    {activeMenuDef && <span className="sr-only">{activeMenuDef.label}</span>}
+    {deleteTarget && <ConfirmDataDeletion title={'删除「' + deleteTarget.name + '」？'} onClose={() => setDeleteTarget(null)} onDelete={removeRecord} />}
+  </div>
 }

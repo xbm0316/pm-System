@@ -128,32 +128,32 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     void updateRequirementStatus(reqId, status)
   }
 
-  function addRequirement(item: Requirement) {
+  async function addRequirement(item: Requirement) {
+    await insertRequirement(item)
     setRequirements((prev) => [...prev, item])
-    void insertRequirement(item)
   }
 
-  function addCompetitor(item: Competitor) {
+  async function addCompetitor(item: Competitor) {
+    await insertCompetitor(item)
     setCompetitors((prev) => [...prev, item])
-    void insertCompetitor(item)
   }
 
-  function updateCompetitorFields(id: string, patch: Partial<Competitor>) {
+  async function updateCompetitorFields(id: string, patch: Partial<Competitor>) {
+    await updateCompetitor(id, { name: patch.name, url: patch.url, description: patch.description })
     setCompetitors((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item))
-    void updateCompetitor(id, { name: patch.name, url: patch.url, description: patch.description })
   }
 
-  function deleteCompetitor(id: string) {
+  async function deleteCompetitor(id: string) {
+    await deleteLocalFilesForEntity('competitor', id, space.id)
+    await deleteCompetitorRow(id)
     setCompetitors((prev) => prev.filter((item) => item.id !== id))
-    void deleteCompetitorRow(id)
-    void deleteLocalFilesForEntity('competitor', id)
   }
 
-  function deleteRequirement(reqId: string) {
+  async function deleteRequirement(reqId: string) {
+    await deleteLocalFilesForEntity('requirement', reqId, space.id)
+    await deleteRequirementRow(reqId)
     setRequirements((prev) => prev.filter((item) => item.id !== reqId))
     setDetailTarget((current) => current === reqId ? null : current)
-    void deleteRequirementRow(reqId)
-    void deleteLocalFilesForEntity('requirement', reqId)
   }
 
   function updateRequirementFiles(reqId: string, attachments: Requirement['attachments']) {
@@ -161,9 +161,9 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     void updateRequirementAttachments(reqId, attachments)
   }
 
-  function updateRequirementFields(reqId: string, patch: Partial<Requirement>) {
+  async function updateRequirementFields(reqId: string, patch: Partial<Requirement>) {
+    await updateRequirement(reqId, patch)
     setRequirements((prev) => prev.map((item) => item.id === reqId ? { ...item, ...patch } : item))
-    void updateRequirement(reqId, patch)
   }
 
   function renderProductContent() {

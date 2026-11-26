@@ -1,6 +1,8 @@
 import { Banner } from '@astryxdesign/core/Banner'
 import { Heading } from '@astryxdesign/core/Text'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import { useAttachmentDraft } from '../lib/useAttachmentDraft'
+import ConfirmDataDeletion from './ConfirmDataDeletion'
 import AttachmentPicker from './AttachmentPicker'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import BoardLaneHeading from './BoardLaneHeading'
@@ -29,15 +31,13 @@ import {
   type Competitor,
   uid,
 } from '../lib/store'
-import { deleteLocalFile, uploadLocalFile } from '../lib/localFiles'
-import FileAttachmentList from './FileAttachmentList'
 
 interface Props {
   spaceId: string
   requirements: Requirement[]
-  onAdd: (r: Requirement) => void
+  onAdd: (r: Requirement) => Promise<void>
   onOpenTrack: (reqId: string) => void
-  onDelete: (reqId: string) => void
+  onDelete: (reqId: string) => Promise<void>
   activeReqId: string | null
   openSignal: number
   searchQuery?: string
@@ -196,8 +196,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
   const [priority, setPriority] = useState<Priority>('P1')
   const [launchDate, setLaunchDate] = useState('')
   const [competitorIds, setCompetitorIds] = useState<string[]>([])
-  const [attachments, setAttachments] = useState<RequirementAttachment[]>([])
-  const [attachmentError, setAttachmentError] = useState('')
+  const attachmentDraft = useAttachmentDraft({ maxSize: 15, maxTotal: 50 })
   const [deleteTarget, setDeleteTarget] = useState<Requirement | null>(null)
   const [draftId, setDraftId] = useState(() => uid())
 
@@ -238,20 +237,22 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
     setContent('')
     setPriority('P1')
     setDraftId(uid())
-    setAttachments([])
-    setAttachmentError('')
+    attachmentDraft.reset()
     setLaunchDate('')
     setCompetitorIds([])
     setShowForm(true)
   }
 
-  function submit() {
-    if (!name.trim()) return
-    onAdd({
+  async function submit() {
+    const requirementName = name.trim()
+    if (!requirementName) return
+    const saved = await attachmentDraft.save({
+      spaceId, entityType: 'requirement', entityId: draftId, pathSegments: ['需求', requirementName, '关联文件'],
+    }, (attachments) => onAdd({
       id: draftId,
       spaceId,
       version: version.trim() || 'V',
-      name: name.trim(),
+      name: requirementName,
       content: content.trim(),
       priority,
       status: '调研中',
@@ -259,54 +260,14 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
       launchDate: launchDate || undefined,
       competitorIds: competitorIds.length ? competitorIds : undefined,
       attachments,
-    })
-    setShowForm(false)
-    setVersion('V')
-    setName('')
-    setContent('')
-    setPriority('P1')
-    setLaunchDate('')
-    setCompetitorIds([])
-    setAttachments([])
-    setAttachmentError('')
-    setDraftId(uid())
+    }))
+    if (saved) setShowForm(false)
   }
 
   function closeForm() {
-    void Promise.all(attachments.map((attachment) => deleteLocalFile(attachment.fileId || attachment.id)))
+    if (attachmentDraft.saving) return
     setShowForm(false)
-    setAttachments([])
-    setAttachmentError('')
-    setDraftId(uid())
-  }
-
-  async function addAttachments(files: File[]) {
-    const incoming = files
-    const valid = incoming.filter((file) => file.size > 0 && file.size <= 15 * 1024 * 1024)
-    if (valid.length !== incoming.length) setAttachmentError('空文件或超过 15 MB 的文件未添加')
-    if (attachments.length + valid.length > 20) return setAttachmentError('需求最多保留 20 个附件')
-    if (attachments.reduce((total, item) => total + item.size, 0) + valid.reduce((total, file) => total + file.size, 0) > 50 * 1024 * 1024) return setAttachmentError('需求附件总大小不能超过 50 MB')
-    if (valid.length === incoming.length) setAttachmentError('')
-    const requirementName = name.trim() || draftId
-    const results = await Promise.allSettled(valid.map((file) => uploadLocalFile(file, { spaceId, entityType: 'requirement', entityId: draftId, pathSegments: ['需求', requirementName, '关联文件'] })))
-    const next = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as RequirementAttachment[]
-    const failed = results.length - next.length
-    if (next.length) setAttachments((prev) => [...prev, ...next])
-    if (failed) setAttachmentError(`${failed} 个文件上传失败，请确认已选择本地文件夹并授予写入权限`)
-  }
-
-  function removeAttachment(id: string) {
-    setAttachments((prev) => {
-      const item = prev.find((a) => a.id === id)
-      void deleteLocalFile(item?.fileId || item?.id)
-      return prev.filter((a) => a.id !== id)
-    })
-  }
-
-  function formatSize(size: number) {
-    if (size < 1024) return `${size} B`
-    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
+    attachmentDraft.reset()
   }
 
   return (
@@ -349,7 +310,7 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
             </div>
 
             <div className="field-label collection-field-gap">需求名称</div>
-            <TextInput label="需求名称" isLabelHidden width="100%" value={name} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }} placeholder="一句话说清要做什么" hasAutoFocus onChange={setName} />
+            <TextInput label="需求名称" isLabelHidden width="100%" value={name} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submit() } }} placeholder="一句话说清要做什么" hasAutoFocus onChange={setName} />
 
             <div className="field-label" style={{ marginTop: 16 }}>
               需求内容
@@ -363,31 +324,19 @@ export default function ReqPool({ spaceId, requirements, onAdd, onOpenTrack, onD
 
             <div className="attachment-field">
               <div className="field-label">关联资料</div>
-              <AttachmentPicker label="添加关联资料" onFiles={(files) => void addAttachments(files)} />
-              {attachments.length > 0 && <FileAttachmentList files={attachments} onDelete={(attachment) => removeAttachment(attachment.id)} />}
-              {attachmentError && <Banner status="error" title={<>{attachmentError}</>} />}
+              <AttachmentPicker label="添加关联资料" files={attachmentDraft.files} onRemove={attachmentDraft.remove} onFiles={attachmentDraft.add} isDisabled={attachmentDraft.saving} />
+              {attachmentDraft.error && <Banner status="error" title={<>{attachmentDraft.error}</>} />}
             </div>
 
             </div>
             <div className="modal__actions">
-              <Button label="取消" variant="ghost" onClick={closeForm} />
-              <Button label="创建" variant="primary" onClick={submit} style={{ opacity: name.trim() ? 1 : 0.45 }} />
+              <Button label="取消" variant="ghost" isDisabled={attachmentDraft.saving} onClick={closeForm} />
+              <Button label="创建" variant="primary" isLoading={attachmentDraft.saving} onClick={() => void submit()} style={{ opacity: name.trim() ? 1 : 0.45 }} />
             </div>
           </div>
         </WorkspaceOverlay>
       )}
-      {deleteTarget && (
-        <WorkspaceOverlay label="确认删除需求？" onClose={() => setDeleteTarget(null)}>
-          <div className="modal delete-confirm-modal">
-            <Heading level={3} accessibilityLevel={2} className="modal__title">确认删除需求？</Heading>
-            <div className="delete-confirm-modal__text">删除「{deleteTarget.name}」后，对应的需求追踪、PRD 和复盘记录也会一并移除。</div>
-            <div className="modal__actions">
-              <Button label="取消" variant="ghost" type="button" onClick={() => setDeleteTarget(null)} />
-              <Button label="确认删除" variant="destructive" type="button" onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null) }} />
-            </div>
-          </div>
-        </WorkspaceOverlay>
-      )}
+      {deleteTarget && <ConfirmDataDeletion title={'删除需求「' + deleteTarget.name + '」？'} onClose={() => setDeleteTarget(null)} onDelete={() => onDelete(deleteTarget.id)} />}
     </div>
   )
 }

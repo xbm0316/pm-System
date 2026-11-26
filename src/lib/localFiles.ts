@@ -18,7 +18,7 @@ export interface LocalAttachment {
 export type LocalFileInfo = LocalAttachment
 
 type DirectoryHandle = FileSystemDirectoryHandle
-type DirectoryHandleWithPermission = DirectoryHandle & {
+type WritableHandle = {
   queryPermission: (options?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState>
   requestPermission: (options?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState>
 }
@@ -32,21 +32,74 @@ type StoredFile = {
   relativePath: string
   mimeType: string
   size: number
-  blob: Blob
+  blob?: Blob
+  handle?: FileSystemFileHandle
+  root?: DirectoryHandle
   createdAt: number
   storageBackend?: 'helper' | 'browser'
 }
 
 type DirectoryPickerWindow = Window & {
-  showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<DirectoryHandle>
+  showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite'; id?: string; startIn?: DirectoryHandle }) => Promise<DirectoryHandle>
+  showOpenFilePicker?: (options?: { multiple?: boolean; id?: string }) => Promise<RemovableFileHandle[]>
 }
+
+type RemovableFileHandle = FileSystemFileHandle & WritableHandle & { remove?: () => Promise<void> }
+type MoveSource = { directory?: DirectoryHandle; handle: RemovableFileHandle }
+type MoveDirectory = DirectoryHandle & { values(): AsyncIterable<FileSystemHandle> }
+export type AttachmentMoveEntry = { name: string; read: () => Promise<File> }
+
+const moveSources = new WeakMap<File, MoveSource>()
+
+export function supportsAttachmentMoves() {
+  return typeof window !== 'undefined' && typeof (window as DirectoryPickerWindow).showDirectoryPicker === 'function'
+    && typeof globalThis.FileSystemDirectoryHandle?.prototype.removeEntry === 'function'
+}
+
+export function supportsDirectFileSelection() {
+  return typeof (window as DirectoryPickerWindow).showOpenFilePicker === 'function'
+    && typeof (globalThis.FileSystemFileHandle?.prototype as RemovableFileHandle | undefined)?.remove === 'function'
+}
+
+export async function pickFilesToMove(multiple: boolean) {
+  const picker = (window as DirectoryPickerWindow).showOpenFilePicker
+  if (!picker) throw unsupportedError()
+  const handles = await picker({ multiple, id: 'attachment-source-files' })
+  return Promise.all(handles.map(async (handle) => {
+    if (!handle.remove) throw unsupportedError()
+    const file = await handle.getFile()
+    moveSources.set(file, { handle })
+    return file
+  }))
+}
+
+export async function pickAttachmentSource() {
+  const picker = (window as DirectoryPickerWindow).showDirectoryPicker
+  if (!picker) throw unsupportedError()
+  const directory = await picker({ mode: 'readwrite', id: 'attachment-source' }) as MoveDirectory
+  const entries: AttachmentMoveEntry[] = []
+  for await (const entry of directory.values()) {
+    if (entry.kind !== 'file') continue
+    const handle = entry as RemovableFileHandle
+    entries.push({
+      name: handle.name,
+      async read() {
+        const file = await handle.getFile()
+        moveSources.set(file, { directory, handle })
+        return file
+      },
+    })
+  }
+  return { name: directory.name, entries: entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')) }
+}
+
+export const isAttachmentToMove = (file: File) => moveSources.has(file)
 
 const DB_NAME = 'jawcat-local-files'
 const DB_VERSION = 1
 const FILE_STORE = 'files'
 const HANDLE_STORE = 'settings'
 const LOCAL_FILE_PREFIX = '/local-files/'
-const objectUrls = new Map<string, string>()
 let directoryPromise: Promise<DirectoryHandle> | null = null
 
 function currentOwnerPhone() {
@@ -135,32 +188,71 @@ async function idbAll() {
   return result
 }
 
+type SavedDirectory = { key: string; handle: DirectoryHandle }
+
 async function restoreDirectoryHandle() {
-  const saved = await idbGet<{ key: string; handle: DirectoryHandle }>(HANDLE_STORE, 'root')
-  if (saved?.handle) directoryPromise = Promise.resolve(saved.handle)
+  const saved = await idbGet<SavedDirectory>(HANDLE_STORE, 'root')
+  if (saved?.handle && !directoryPromise) directoryPromise = Promise.resolve(saved.handle)
 }
 
-function ensureDirectoryHandle() {
+export async function getAttachmentDestinationName() {
+  await restoreDirectoryHandle()
+  return (await directoryPromise)?.name ?? ''
+}
+
+async function requestWriteAccess(handle: FileSystemHandle) {
+  const writable = handle as FileSystemHandle & WritableHandle
+  const options = { mode: 'readwrite' } as const
+  if (await writable.queryPermission(options) === 'granted') return
+  if (await writable.requestPermission(options) !== 'granted') throw new Error('未获得本地文件或文件夹写入权限')
+}
+
+async function openDestinationPicker(previous?: DirectoryHandle) {
+  const picker = (window as DirectoryPickerWindow).showDirectoryPicker
+  if (!picker) throw unsupportedError()
+  const next = await picker({ mode: 'readwrite', id: 'attachment-destination', ...(previous ? { startIn: previous } : {}) })
+  await requestWriteAccess(next)
+  if (previous && !await previous.isSameEntry(next) && !await idbGet<SavedDirectory>(HANDLE_STORE, 'legacy-root')) {
+    await idbPut(HANDLE_STORE, { key: 'legacy-root', handle: previous } satisfies SavedDirectory)
+  }
+  await idbPut(HANDLE_STORE, { key: 'root', handle: next } satisfies SavedDirectory)
+  return next
+}
+
+export async function chooseAttachmentDestination() {
+  const previousPromise = directoryPromise
+  const next = await openDestinationPicker(previousPromise ? await previousPromise : undefined)
+  directoryPromise = Promise.resolve(next)
+  window.dispatchEvent(new Event('attachment-destination-change'))
+  return next.name
+}
+
+async function ensureDirectoryHandle() {
   if (!directoryPromise) {
-    if (typeof window === 'undefined' || !('indexedDB' in window)) return Promise.reject(unsupportedError())
-    const picker = (window as DirectoryPickerWindow).showDirectoryPicker
-    if (!picker) return Promise.reject(unsupportedError())
-    // This call must happen synchronously in the upload click's activation.
-    directoryPromise = picker({ mode: 'readwrite' }).then(async (handle) => {
-      await idbPut(HANDLE_STORE, { key: 'root', handle })
+    directoryPromise = openDestinationPicker().then((handle) => {
+      window.dispatchEvent(new Event('attachment-destination-change'))
       return handle
     }).catch((error) => {
       directoryPromise = null
       throw error
     })
   }
-  return directoryPromise.then(async (handle) => {
-    const permission = await (handle as DirectoryHandleWithPermission).queryPermission({ mode: 'readwrite' })
-    if (permission === 'granted') return handle
-    const requested = await (handle as DirectoryHandleWithPermission).requestPermission({ mode: 'readwrite' })
-    if (requested !== 'granted') throw new Error('未获得本地文件夹写入权限')
-    return handle
-  })
+  const handle = await directoryPromise
+  await requestWriteAccess(handle)
+  return handle
+}
+
+async function recordedDirectory(record: StoredFile) {
+  const saved = record.root ?? (await idbGet<SavedDirectory>(HANDLE_STORE, 'legacy-root'))?.handle
+    ?? (await idbGet<SavedDirectory>(HANDLE_STORE, 'root'))?.handle
+  if (!saved) throw new Error('原附件的存放位置未授权')
+  return saved
+}
+
+export async function authorizeAttachmentDirectory(fileId?: string) {
+  const record = fileId ? await idbGet<StoredFile>(FILE_STORE, fileId) : undefined
+  if (record?.storageBackend === 'browser' || (record && !record.storageBackend)) await requestWriteAccess(await recordedDirectory(record))
+  else await ensureDirectoryHandle()
 }
 
 async function getNestedDirectory(root: DirectoryHandle, segments: string[], create = true) {
@@ -169,20 +261,39 @@ async function getNestedDirectory(root: DirectoryHandle, segments: string[], cre
   return current
 }
 
-async function getFileHandle(root: DirectoryHandle, relativePath: string, create = false) {
-  const segments = relativePath.split('/').filter(Boolean)
-  const name = segments.pop()
-  if (!name) throw new Error('本地文件路径无效')
-  const directory = await getNestedDirectory(root, segments, create)
-  return directory.getFileHandle(name, { create })
+function missingEntry(error: unknown) {
+  return error instanceof DOMException && error.name === 'NotFoundError'
 }
 
 async function removeFile(root: DirectoryHandle, relativePath: string) {
   const segments = relativePath.split('/').filter(Boolean)
   const name = segments.pop()
-  if (!name) return
-  const directory = await getNestedDirectory(root, segments, false)
-  await directory.removeEntry(name)
+  if (!name || segments[0] !== 'upload') throw new Error('本地附件路径无效')
+  const directories = [root]
+  for (const segment of segments) {
+    try {
+      directories.push(await directories[directories.length - 1].getDirectoryHandle(segment))
+    } catch (error) {
+      if (missingEntry(error)) break
+      throw error
+    }
+  }
+  if (directories.length === segments.length + 1) {
+    try {
+      await directories[directories.length - 1].removeEntry(name)
+    } catch (error) {
+      if (!missingEntry(error)) throw error
+    }
+  }
+  // Remove empty application directories only, stopping at the shared upload root.
+  for (let index = directories.length - 1; index > 1; index -= 1) {
+    try {
+      await directories[index - 1].removeEntry(segments[index - 1], { recursive: false })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'InvalidModificationError') return
+      if (!missingEntry(error)) throw error
+    }
+  }
 }
 
 export function localFileUrl(fileId: string) {
@@ -195,14 +306,6 @@ function helperAvailable() {
 
 function helperUrl(path: string) {
   return `/__local-files${path}`
-}
-
-function toBase64(buffer: ArrayBuffer) {
-  let binary = ''
-  const bytes = new Uint8Array(buffer)
-  const chunkSize = 0x8000
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)))
-  return btoa(binary)
 }
 
 async function helperRequest(path: string, init?: RequestInit) {
@@ -223,63 +326,146 @@ export async function registerLocalFileServiceWorker() {
   } catch (error) { console.warn('local file service worker unavailable', error) }
 }
 
-export async function uploadLocalFile(file: File | Blob, context: { spaceId: string; entityType: string; entityId: string; fileName?: string; pathSegments?: string[] }) {
+type AttachmentContext = { spaceId: string; entityType: string; entityId: string; fileName?: string; pathSegments?: string[] }
+
+async function sameContents(a: Blob, b: Blob) {
+  if (a.size !== b.size) return false
+  const chunkSize = 1024 * 1024
+  for (let offset = 0; offset < a.size; offset += chunkSize) {
+    const left = new Uint8Array(await a.slice(offset, offset + chunkSize).arrayBuffer())
+    const right = new Uint8Array(await b.slice(offset, offset + chunkSize).arrayBuffer())
+    if (left.some((value, index) => value !== right[index])) return false
+  }
+  return true
+}
+
+export async function uploadLocalFile(file: File | Blob, context: AttachmentContext): Promise<LocalAttachment> {
+  if (file instanceof File && isAttachmentToMove(file)) throw new Error('请通过表单保存待移动文件')
+  return writeAttachment(file, context, await ensureDirectoryHandle())
+}
+
+async function writeAttachment(file: File | Blob, context: AttachmentContext, root: DirectoryHandle, verify = false): Promise<LocalAttachment> {
   const id = crypto.randomUUID()
   const originalName = context.fileName || (file instanceof File ? file.name : 'attachment')
   const baseSegments = context.pathSegments?.length ? context.pathSegments : [context.spaceId, context.entityType, context.entityId]
-  const cleanName = safeSegment(originalName, `attachment${extension(originalName)}`)
-  // 保持现有业务路径层级；账号隔离通过 IndexedDB 的 ownerPhone 元数据完成。
+  const cleanName = safeSegment(originalName, 'attachment' + extension(originalName))
   const directorySegments = ['upload', ...baseSegments.map((segment) => safeSegment(segment, 'unassigned'))]
   let relativePath = [...directorySegments, cleanName].join('/')
-  const helperSaved = await helperRequest('/save-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spaceId: context.spaceId, relativePath, data: toBase64(await file.arrayBuffer()) }) })
-  if (helperSaved) {
-    relativePath = helperSaved.path || relativePath
-    const blob = file instanceof Blob ? file : new Blob([file])
-    const now = Date.now()
-    await idbPut(FILE_STORE, { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now, storageBackend: 'helper' } satisfies StoredFile)
-    const objectUrl = URL.createObjectURL(blob)
-    objectUrls.set(id, objectUrl)
-    return { id, fileId: id, name: originalName, fileName: originalName, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size, kind: (file.type || '').startsWith('image/') ? 'image' as const : 'file' as const, url: objectUrl, relativePath, storageScope: context.spaceId, storageBackend: 'helper', createdAt: now, updatedAt: now } satisfies LocalAttachment
+  const mimeType = file.type || 'application/octet-stream'
+  const now = Date.now()
+  const metadata = { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, mimeType, size: file.size, createdAt: now }
+  const attachment = {
+    id, fileId: id, name: originalName, fileName: originalName, type: mimeType, mimeType, size: file.size,
+    kind: mimeType.startsWith('image/') ? 'image' as const : 'file' as const,
+    storageScope: context.spaceId, createdAt: now, updatedAt: now,
   }
-  const root = await ensureDirectoryHandle()
-  let target: FileSystemFileHandle
-  let suffix = 1
-  while (true) {
-    try {
-      target = await getFileHandle(root, relativePath, false)
+  const storeFile = async (): Promise<LocalAttachment> => {
+    const directory = await getNestedDirectory(root, directorySegments)
+    let target: FileSystemFileHandle
+    let name = cleanName
+    for (let suffix = 1; ; suffix += 1) {
+      try {
+        await directory.getFileHandle(name)
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotFoundError') throw error
+        target = await directory.getFileHandle(name, { create: true })
+        break
+      }
       const stem = cleanName.replace(/(\.[^.]*)$/, '')
-      const ext = (cleanName.match(/(\.[^.]*)$/) || [''])[0]
-      relativePath = [...directorySegments, `${stem}-${suffix}${ext}`].join('/')
-      suffix += 1
+      name = stem + '-' + suffix + cleanName.slice(stem.length)
+    }
+    relativePath = [...directorySegments, name].join('/')
+    try {
+      const writable = await target.createWritable()
+      try {
+        await writable.write(file)
+        await writable.close()
+      } catch (error) {
+        await writable.abort().catch(() => undefined)
+        throw error
+      }
+      if (verify && !await sameContents(file, await target.getFile())) throw new Error('目标文件校验失败')
+      await idbPut(FILE_STORE, { ...metadata, relativePath, handle: target, root, storageBackend: 'browser' } satisfies StoredFile)
+    } catch (error) {
+      await directory.removeEntry(name).catch(() => undefined)
+      throw error
+    }
+    return { ...attachment, url: localFileUrl(id), relativePath, storageBackend: 'browser' }
+  }
+  return navigator.locks ? navigator.locks.request('pm-workspace-attachment-write', storeFile) : storeFile()
+}
+
+export async function saveLocalAttachments(
+  files: readonly File[],
+  context: AttachmentContext | ((file: File, index: number) => AttachmentContext),
+  persist: (attachments: LocalAttachment[]) => void | Promise<void>,
+) {
+  if (files.length && !directoryPromise) throw new Error('请先选择存放位置')
+  const sourceHandles = [...new Set(files.flatMap((file) => {
+    const source = moveSources.get(file)
+    return source && !source.directory ? [source.handle] : []
+  }))]
+  // Confirm source permissions from the save gesture before staging any data.
+  for (const handle of sourceHandles) await requestWriteAccess(handle)
+  const root = files.length > 0 ? await ensureDirectoryHandle() : undefined
+  const staged: LocalAttachment[] = []
+  const sources: Array<{ file: File; source: MoveSource; attachment: LocalAttachment }> = []
+  try {
+    for (const [index, file] of files.entries()) {
+      const source = moveSources.get(file)
+      if (source) {
+        const relative = await root?.resolve(source.handle)
+        if (relative?.[0] === 'upload') throw new Error('「' + file.name + '」已在附件目录，请选择原始文件')
+        for (const previous of sources) {
+          if (await previous.source.handle.isSameEntry(source.handle)) throw new Error('「' + file.name + '」重复选择，请移除其中一项')
+        }
+      }
+      try {
+        const attachment = await writeAttachment(file, typeof context === 'function' ? context(file, index) : context, root!, Boolean(source))
+        staged.push(attachment)
+        if (source) sources.push({ file, source, attachment })
+      } catch (error) {
+        throw new Error('「' + file.name + '」保存失败：' + (error instanceof Error ? error.message : '请重试'))
+      }
+    }
+    await persist(staged)
+  } catch (error) {
+    await Promise.allSettled(staged.map((attachment) => deleteLocalFile(attachment.fileId)))
+    throw error
+  }
+  const retained: string[] = []
+  for (const { file, source, attachment } of sources) {
+    try {
+      const liveHandle = source.directory ? await source.directory.getFileHandle(source.handle.name) : source.handle
+      const record = await idbGet<StoredFile>(FILE_STORE, attachment.fileId)
+      if (!record?.handle || !await liveHandle.isSameEntry(source.handle)
+        || !await sameContents(file, await liveHandle.getFile())
+        || !await sameContents(file, await record.handle.getFile())) {
+        throw new Error('文件已变化')
+      }
+      if (source.directory) await source.directory.removeEntry(source.handle.name)
+      else await source.handle.remove!()
     } catch {
-      target = await getFileHandle(root, relativePath, true)
-      break
+      retained.push(file.name)
     }
   }
-  const writable = await target.createWritable()
-  await writable.write(file)
-  await writable.close()
-  const blob = file instanceof Blob ? file : new Blob([file])
-  const now = Date.now()
-  await idbPut(FILE_STORE, { id, spaceId: context.spaceId, ownerPhone: currentOwnerPhone(), entityType: context.entityType, entityId: context.entityId, originalName, relativePath, mimeType: file.type || 'application/octet-stream', size: file.size, blob, createdAt: now, storageBackend: 'browser' } satisfies StoredFile)
-  const objectUrl = URL.createObjectURL(blob)
-  objectUrls.set(id, objectUrl)
-  return { id, fileId: id, name: originalName, fileName: originalName, type: file.type || 'application/octet-stream', mimeType: file.type || 'application/octet-stream', size: file.size, kind: (file.type || '').startsWith('image/') ? 'image' as const : 'file' as const, url: objectUrl, relativePath, storageScope: context.spaceId, storageBackend: 'browser', createdAt: now, updatedAt: now } satisfies LocalAttachment
+  return retained
 }
 
 export async function deleteLocalFile(fileId?: string) {
   if (!fileId) return
   const record = await idbGet<StoredFile>(FILE_STORE, fileId)
-  if (record) {
-    if (record.storageBackend === 'helper') {
-      await helperRequest(`/delete-file?spaceId=${encodeURIComponent(record.spaceId)}&path=${encodeURIComponent(record.relativePath)}`, { method: 'POST' })
-    } else {
-      try { await removeFile(await ensureDirectoryHandle(), record.relativePath) } catch { /* file may already be removed */ }
-    }
+  if (!record || (record.ownerPhone && record.ownerPhone !== currentOwnerPhone())) return
+  if (record.storageBackend === 'helper') {
+    const result = await helperRequest('/delete-file?spaceId=' + encodeURIComponent(record.spaceId) + '&path=' + encodeURIComponent(record.relativePath), { method: 'POST' })
+    if (!result) throw new Error('无法连接本地文件助手，请启动助手后重试')
+  } else {
+    const root = await recordedDirectory(record)
+    await requestWriteAccess(root)
+    const remove = () => removeFile(root, record.relativePath)
+    if (navigator.locks) await navigator.locks.request('pm-workspace-attachment-write', remove)
+    else await remove()
   }
-  const objectUrl = objectUrls.get(fileId)
-  if (objectUrl) URL.revokeObjectURL(objectUrl)
-  objectUrls.delete(fileId)
   await idbDelete(FILE_STORE, fileId)
 }
 
@@ -319,7 +505,7 @@ export async function getLocalFile(fileId?: string): Promise<LocalAttachment | n
  * API. We still validate the folder and return its real relative path so the
  * UI can offer a safe, honest fallback (copy the path / open the in-app file).
  */
-export async function openLocalFolder(relativePath?: string, storageScope?: string, storageBackend?: 'helper' | 'browser') {
+export async function openLocalFolder(relativePath?: string, storageScope?: string, storageBackend?: 'helper' | 'browser', fileId?: string) {
   const path = String(relativePath || '').split('/').filter(Boolean)
   if (path.length) path.pop()
   const relativeDirectory = path.join('/') || 'upload'
@@ -333,28 +519,44 @@ export async function openLocalFolder(relativePath?: string, storageScope?: stri
       if (response.ok) return { path: relativeDirectory, native: true }
     } catch { /* helper is optional */ }
   }
-  const root = await ensureDirectoryHandle()
+  const record = fileId ? await idbGet<StoredFile>(FILE_STORE, fileId) : undefined
+  const root = record && record.storageBackend !== 'helper' ? await recordedDirectory(record) : await ensureDirectoryHandle()
+  await requestWriteAccess(root)
   await getNestedDirectory(root, path, false)
   return { path: relativeDirectory, native: false }
 }
 
-export async function deleteLocalFilesForEntity(entityType: string, entityId: string) {
-  const attachments = await listLocalFiles(entityType, entityId)
-  await Promise.all(attachments.map((attachment) => deleteLocalFile(attachment.fileId || attachment.id)))
+export async function deleteLocalFilesForEntities(entities: ReadonlyArray<{ type: string; id: string }>, spaceId?: string) {
+  const ownerPhone = currentOwnerPhone()
+  const keys = new Set(entities.map(({ type, id }) => type + ':' + id))
+  const records = (await idbAll()).filter((record) =>
+    (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041'))
+    && (!spaceId || record.spaceId === spaceId) && keys.has(record.entityType + ':' + record.entityId))
+  for (const { id } of records) await deleteLocalFile(id)
+}
+
+export async function deleteLocalFilesForEntity(entityType: string, entityId: string, spaceId?: string) {
+  await deleteLocalFilesForEntities([{ type: entityType, id: entityId }], spaceId)
 }
 
 export async function deleteLocalFilesForSpace(spaceId: string) {
   const ownerPhone = currentOwnerPhone()
   const records = (await idbAll()).filter((record) => record.spaceId === spaceId && (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041')))
-  await Promise.all(records.map((record) => deleteLocalFile(record.id)))
+  for (const { id } of records) await deleteLocalFile(id)
+}
+
+export async function readLocalAttachment(fileId: string) {
+  const record = await idbGet<StoredFile>(FILE_STORE, fileId)
+  if (!record || (record.ownerPhone && record.ownerPhone !== currentOwnerPhone())) throw new Error('本地文件记录不存在')
+  const file = record.blob ?? await record.handle?.getFile()
+  if (!file) throw new Error('本地附件不可读取')
+  return file
 }
 
 export async function fetchLocalBuffer(url: string) {
   if (url.startsWith(LOCAL_FILE_PREFIX)) {
-    const id = decodeURIComponent(url.slice(LOCAL_FILE_PREFIX.length))
-    const record = await idbGet<StoredFile>(FILE_STORE, id)
-    if (!record) throw new Error('本地文件记录不存在')
-    return record.blob.arrayBuffer()
+    const file = await readLocalAttachment(decodeURIComponent(url.slice(LOCAL_FILE_PREFIX.length)))
+    return file.arrayBuffer()
   }
   const response = await fetch(url)
   if (!response.ok) throw new Error('文件读取失败')

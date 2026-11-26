@@ -2,6 +2,8 @@ import { Banner } from '@astryxdesign/core/Banner'
 import { Heading } from '@astryxdesign/core/Text'
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
 import { NumberInput } from '@astryxdesign/core/NumberInput'
+import { useAttachmentDraft } from '../lib/useAttachmentDraft'
+import ConfirmDataDeletion from './ConfirmDataDeletion'
 import AttachmentPicker from './AttachmentPicker'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import BoardLaneHeading from './BoardLaneHeading'
@@ -15,7 +17,7 @@ import { TextArea } from '@astryxdesign/core/TextArea'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { Tab, TabList } from '@astryxdesign/core/TabList'
 import { Stepper, Step } from '@astryxdesign/core/Stepper'
-import { useEffect, useMemo, useState, type SyntheticEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from 'react'
 import Icon from './Icon'
 import RichTextField from './RichTextField'
 import { richTextPlainText } from '../lib/richText'
@@ -26,8 +28,8 @@ import KnowledgeWorkspace from './KnowledgeWorkspace'
 import MeetingWorkspace from './MeetingWorkspace'
 import DateRangeField from './DateRangeField'
 import { PRIORITIES, PROJECT_STATUSES, TASK_STATUSES, uid, type KnowledgeResource, type Priority, type Project, type ProjectIssue, type ProjectStatus, type ProjectStore, type ProjectTask, type TaskStatus, type WorkspaceCollectionType, type WorkspaceRetro } from '../lib/store'
-import { deleteLocalFile, listLocalFiles, localFileUrl, uploadLocalFile } from '../lib/localFiles'
-import { deleteLocalFilesForEntity } from '../lib/localFiles'
+import { listLocalFiles, localFileUrl } from '../lib/localFiles'
+import { deleteLocalFilesForEntities, deleteLocalFilesForEntity } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 
 interface Props {
@@ -99,6 +101,7 @@ function projectStatusClass(status: ProjectStatus) {
 export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery = '', onRemindersChange, onReminders, openTaskId, onOpenTask, onCloseTask, view = 'board' }: Props) {
   useEffect(() => { clearLegacyProjectStorage() }, [])
   const [store, setStore] = useState<ProjectStore>(() => readStore(ownerPhone, spaceId))
+  const storeRef = useRef(store)
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => readStore(ownerPhone, spaceId).projects.find((project) => !project.archivedAt)?.id || null)
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
   const [showCreateProject, setShowCreateProject] = useState(false)
@@ -115,8 +118,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
   const [projectCost, setProjectCost] = useState('')
   const [projectRevenue, setProjectRevenue] = useState('')
   const [projectProfit, setProjectProfit] = useState('')
-  const [projectFiles, setProjectFiles] = useState<File[]>([])
-  const [projectFileError, setProjectFileError] = useState('')
+  const projectAttachments = useAttachmentDraft()
   const [projectDetailEditing, setProjectDetailEditing] = useState(false)
   const [taskName, setTaskName] = useState('')
   const [taskContent, setTaskContent] = useState('')
@@ -124,21 +126,17 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
   const [taskStartDate, setTaskStartDate] = useState('')
   const [taskEndDate, setTaskEndDate] = useState('')
   const [taskPriority, setTaskPriority] = useState<Priority>('P1')
-  const [taskFiles, setTaskFiles] = useState<File[]>([])
-  const [taskFileError, setTaskFileError] = useState('')
+  const taskAttachments = useAttachmentDraft()
   const [showProjectStatus, setShowProjectStatus] = useState(false)
   const [projectProgress, setProjectProgress] = useState(0)
   const [taskFormError, setTaskFormError] = useState('')
+  const [deleteArchivedTarget, setDeleteArchivedTarget] = useState<Project | null>(null)
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<ProjectTask | null>(null)
 
   function resetProjectForm(parentId?: string) {
     setProjectParentId(parentId)
-    setProjectName(''); setProjectDescription(''); setProjectStartDate(''); setProjectEndDate(''); setProjectCost(''); setProjectRevenue(''); setProjectProfit(''); setProjectFiles([]); setProjectFileError('')
+    setProjectName(''); setProjectDescription(''); setProjectStartDate(''); setProjectEndDate(''); setProjectCost(''); setProjectRevenue(''); setProjectProfit(''); projectAttachments.reset()
   }
-
-  useEffect(() => {
-    localStorage.setItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`, JSON.stringify(store))
-  }, [ownerPhone, spaceId, store])
 
   useEffect(() => {
     const current = store.projects.find((project) => project.id === activeProjectId && !project.archivedAt)
@@ -190,18 +188,21 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
   }, [onReminders, onRemindersChange, reminderCount, reminders])
 
   function patchStore(updater: (current: ProjectStore) => ProjectStore) {
-    setStore((current) => updater(current))
+    const next = updater(storeRef.current)
+    localStorage.setItem(STORAGE_PREFIX + ownerPhone + '.' + spaceId, JSON.stringify(next))
+    storeRef.current = next
+    setStore(next)
   }
 
   async function createProject() {
     const name = projectName.trim()
     if (!name) return
     const project: Project = { id: uid(), spaceId, name, parentId: projectParentId, description: projectDescription.trim(), startDate: projectStartDate || undefined, endDate: projectEndDate || undefined, cost: projectCost.trim(), revenue: projectRevenue.trim(), profit: projectProfit.trim(), progress: 0, status: '调研中', createdAt: Date.now() }
-    const results = projectFiles.length ? await Promise.allSettled(projectFiles.map((file) => uploadLocalFile(file, { spaceId, entityType: 'project', entityId: project.id, pathSegments: ['项目', name, '关联文件'] }))) : []
-    const attachments = results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : [])
-    if (results.some((result) => result.status === 'rejected')) setProjectFileError('部分附件上传失败，请确认已选择本地文件夹并授予写入权限')
-    const finalProject = attachments.length ? { ...project, attachments } : project
-    patchStore((current) => ({ ...current, projects: [...current.projects, finalProject] }))
+    const saved = await projectAttachments.save({ spaceId, entityType: 'project', entityId: project.id, pathSegments: ['项目', name, '关联文件'] }, (attachments) => {
+      const finalProject = attachments.length ? { ...project, attachments } : project
+      patchStore((current) => ({ ...current, projects: [...current.projects, finalProject] }))
+    })
+    if (!saved) return
     setActiveProjectId(project.id)
     if (projectParentId) setExpandedProjectId(projectParentId)
     setProjectName('')
@@ -246,7 +247,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
     setShowArchive(false)
   }
 
-  function createTask() {
+  async function createTask() {
     const name = taskName.trim()
     if (!name || !taskStartDate || !taskEndDate || !activeProject) {
       setTaskFormError('请填写任务名称、开始日期和结束日期')
@@ -257,27 +258,22 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
       return
     }
     const taskId = uid()
-    const finish = (attachments: ProjectTask['attachments']) => {
+    const saved = await taskAttachments.save({ spaceId, entityType: 'task', entityId: taskId, pathSegments: ['项目', activeProject.name, '任务', name] }, (attachments) => {
       const task: ProjectTask = { id: taskId, projectId: activeProject.id, name, content: taskContent.trim(), detail: taskDetail.trim(), startDate: taskStartDate, endDate: taskEndDate, priority: taskPriority, status: '调研中', progress: 0, createdAt: Date.now(), attachments }
       patchStore((current) => ({ ...current, tasks: [...current.tasks, task] }))
-      setTaskName(''); setTaskContent(''); setTaskDetail(''); setTaskStartDate(''); setTaskEndDate(''); setTaskPriority('P1'); setTaskFiles([]); setTaskFileError(''); setTaskFormError(''); setShowCreateTask(false)
-    }
-    if (taskFiles.length) {
-      void Promise.allSettled(taskFiles.map((file) => uploadLocalFile(file, { spaceId, entityType: 'task', entityId: taskId, pathSegments: ['项目', activeProject.name, '任务', name] }))).then(async (results) => {
-        if (results.some((result) => result.status === 'rejected')) {
-          await Promise.all(results.flatMap((result) => result.status === 'fulfilled' ? [deleteLocalFile(result.value.fileId)] : []))
-          setTaskFileError('部分文件上传失败，请确认已选择本地文件夹并授予写入权限')
-          return
-        }
-        finish(results.flatMap((result) => result.status === 'fulfilled' ? [{ ...result.value, id: result.value.fileId }] : []) as ProjectTask['attachments'])
-      })
-      return
-    }
-    finish(undefined)
+    })
+    if (!saved) return
+    setTaskName(''); setTaskContent(''); setTaskDetail(''); setTaskStartDate(''); setTaskEndDate(''); setTaskPriority('P1'); setTaskFormError(''); setShowCreateTask(false)
   }
 
-  function deleteTask(task: ProjectTask) {
-    void deleteLocalFilesForEntity('task', task.id)
+  function closeTaskForm() {
+    if (taskAttachments.saving) return
+    taskAttachments.reset()
+    setShowCreateTask(false)
+  }
+
+  async function deleteTask(task: ProjectTask) {
+    await deleteLocalFilesForEntity('task', task.id, spaceId)
     patchStore((current) => ({
       ...current,
       tasks: current.tasks.filter((item) => item.id !== task.id),
@@ -285,6 +281,32 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
     }))
     if (detailTaskId === task.id) setDetailTaskId(null)
     setDeleteTaskTarget(null)
+  }
+
+  async function deleteArchivedProject(project: Project) {
+    const projects = storeRef.current.projects
+    const removedProjects = new Set<string>([project.id])
+    let size = 0
+    while (removedProjects.size !== size) {
+      size = removedProjects.size
+      for (const item of projects) {
+        if (item.parentId && removedProjects.has(item.parentId)) removedProjects.add(item.id)
+      }
+    }
+    const removedTasks = new Set(storeRef.current.tasks.filter((task) => removedProjects.has(task.projectId)).map((task) => task.id))
+    await deleteLocalFilesForEntities([
+      ...Array.from(removedProjects, (id) => ({ type: 'project', id })),
+      ...Array.from(removedTasks, (id) => ({ type: 'task', id })),
+    ], spaceId)
+    patchStore((current) => ({
+      ...current,
+      projects: current.projects.filter((item) => !removedProjects.has(item.id)),
+      tasks: current.tasks.filter((item) => !removedTasks.has(item.id)),
+      issues: current.issues.filter((issue) => !removedTasks.has(issue.taskId)),
+      summaries: current.summaries.filter((summary) => !removedProjects.has(summary.projectId)),
+      meetings: current.meetings.map((meeting) => ({ ...meeting, taskIds: meeting.taskIds?.filter((id) => !removedTasks.has(id)) })),
+    }))
+    if (projectDetailTarget && removedProjects.has(projectDetailTarget.id)) setProjectDetailTarget(null)
   }
 
   function updateTaskStatus(taskId: string, status: TaskStatus) {
@@ -394,7 +416,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
         <div className="project-manager__empty"><EmptyState title="还没有项目" description="先新增一个项目，再添加需要跟踪的任务。" icon={<Icon name="grid" size={24} />} /></div>
       ) : (
         <div className="project-manager__body">
-          <div className="project-manager__project-title"><div><div className="project-manager__eyebrow">当前项目</div><div className="project-manager__project-name-row"><button type="button" className="project-manager__project-name-button" onClick={() => openProjectDetail(activeProject)} title="查看项目详情">{activeProject.name}</button><button type="button" className={`project-status-badge project-status-badge--${projectStatusClass(activeProject.status)}`} onClick={() => setShowProjectStatus(true)} title="修改项目状态">{activeProject.status}<Icon name="chevronDown" size={12} /></button></div></div><Button label="新增任务" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => { setTaskFormError(''); setTaskFileError(''); setTaskFiles([]); setShowCreateTask(true) }} className="project-manager__task-add" /></div>
+          <div className="project-manager__project-title"><div><div className="project-manager__eyebrow">当前项目</div><div className="project-manager__project-name-row"><button type="button" className="project-manager__project-name-button" onClick={() => openProjectDetail(activeProject)} title="查看项目详情">{activeProject.name}</button><button type="button" className={`project-status-badge project-status-badge--${projectStatusClass(activeProject.status)}`} onClick={() => setShowProjectStatus(true)} title="修改项目状态">{activeProject.status}<Icon name="chevronDown" size={12} /></button></div></div><Button label="新增任务" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => { setTaskFormError(''); taskAttachments.reset(); setShowCreateTask(true) }} className="project-manager__task-add" /></div>
           <div className="status-groups-shell project-task-groups-shell">
             <div className="status-groups project-task-groups">
               {TASK_STATUSES.map((status) => {
@@ -436,9 +458,9 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
           </div>
         </WorkspaceOverlay>
       )}
-      {showCreateProject && <WorkspaceOverlay label="新增项目" onClose={() => setShowCreateProject(false)}><div className="modal modal--wide project-task-create-modal project-form-modal"><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">新增项目</Heading><div className="field-label">项目名称</div><TextInput label="项目名称" isLabelHidden width="100%" value={projectName} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void createProject() } }} placeholder="输入项目名称" hasAutoFocus onChange={setProjectName} /><div className="field-label collection-field-gap">所属父项目</div><TextInput label="父项目" value={projectParentId ? projects.find((project) => project.id === projectParentId)?.name || '' : '顶层项目'} isLabelHidden width="100%" isReadOnly onChange={() => undefined} /><div className="field-label collection-field-gap">项目简介</div><RichTextField label="项目简介" value={projectDescription} placeholder="输入项目简介" onChange={setProjectDescription} /><div className="project-form-grid">{projectScheduleField}<div>成本<TextInput label="支出" value={projectCost} isLabelHidden width="100%" onChange={setProjectCost} /></div><div>收入<TextInput label="收入" value={projectRevenue} isLabelHidden width="100%" onChange={setProjectRevenue} /></div><div>利润<TextInput label="利润" value={projectProfit} isLabelHidden width="100%" onChange={setProjectProfit} /></div></div><div className="field-label collection-field-gap">关联文件</div><AttachmentPicker label="添加项目关联文件" description={projectFiles.length ? `已选择 ${projectFiles.length} 个文件` : undefined} onFiles={(files) => setProjectFiles((current) => [...current, ...files].slice(0, 20))} />{projectFileError && <Banner status="error" title={<>{projectFileError}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setShowCreateProject(false)} /><Button label="创建项目" variant="primary" type="button" onClick={() => void createProject()} style={{ opacity: projectName.trim() ? 1 : .45 }} /></div></div></WorkspaceOverlay>}
+      {showCreateProject && <WorkspaceOverlay label="新增项目" onClose={() => { if (!projectAttachments.saving) setShowCreateProject(false) }}><div className="modal modal--wide project-task-create-modal project-form-modal"><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">新增项目</Heading><div className="field-label">项目名称</div><TextInput label="项目名称" isLabelHidden width="100%" value={projectName} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void createProject() } }} placeholder="输入项目名称" hasAutoFocus onChange={setProjectName} /><div className="field-label collection-field-gap">所属父项目</div><TextInput label="父项目" value={projectParentId ? projects.find((project) => project.id === projectParentId)?.name || '' : '顶层项目'} isLabelHidden width="100%" isReadOnly onChange={() => undefined} /><div className="field-label collection-field-gap">项目简介</div><RichTextField label="项目简介" value={projectDescription} placeholder="输入项目简介" onChange={setProjectDescription} /><div className="project-form-grid">{projectScheduleField}<div>成本<TextInput label="支出" value={projectCost} isLabelHidden width="100%" onChange={setProjectCost} /></div><div>收入<TextInput label="收入" value={projectRevenue} isLabelHidden width="100%" onChange={setProjectRevenue} /></div><div>利润<TextInput label="利润" value={projectProfit} isLabelHidden width="100%" onChange={setProjectProfit} /></div></div><div className="field-label collection-field-gap">关联文件</div><AttachmentPicker label="添加项目关联文件" files={projectAttachments.files} onRemove={projectAttachments.remove} onFiles={projectAttachments.add} isDisabled={projectAttachments.saving} />{projectAttachments.error && <Banner status="error" title={<>{projectAttachments.error}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" isDisabled={projectAttachments.saving} onClick={() => setShowCreateProject(false)} /><Button label="创建项目" variant="primary" type="button" isLoading={projectAttachments.saving} onClick={() => void createProject()} style={{ opacity: projectName.trim() ? 1 : .45 }} /></div></div></WorkspaceOverlay>}
       {projectDetailTarget && <WorkspaceOverlay label="编辑项目" onClose={() => setProjectDetailTarget(null)}><div className="modal modal--wide project-detail-modal">{projectDetailEditing ? <><Heading level={3} accessibilityLevel={2} className="modal__title">编辑项目</Heading><div className="field-label">项目名称</div><TextInput label="项目名称" value={projectName} isLabelHidden width="100%" hasAutoFocus onChange={setProjectName} /><div className="field-label collection-field-gap">项目简介</div><RichTextField label="项目简介" value={projectDescription} placeholder="输入项目简介" onChange={setProjectDescription} /><div className="project-form-grid">{projectScheduleField}<div>成本<TextInput label="支出" value={projectCost} isLabelHidden width="100%" onChange={setProjectCost} /></div><div>收入<TextInput label="收入" value={projectRevenue} isLabelHidden width="100%" onChange={setProjectRevenue} /></div><div>利润<TextInput label="利润" value={projectProfit} isLabelHidden width="100%" onChange={setProjectProfit} /></div></div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setProjectDetailEditing(false)} /><Button label="保存" variant="primary" type="button" onClick={saveProjectEdit} /></div></> : <><div className="modal__title-row"><Heading level={3} accessibilityLevel={2} className="modal__title">{projectDetailTarget.name}</Heading><IconButton label="编辑项目" variant="ghost" size="sm" icon={<Icon name="edit" size={15} />} type="button" onClick={startProjectEdit} /></div><div className="project-detail-meta">{projectDetailTarget.parentId ? `所属父项目：${projects.find((project) => project.id === projectDetailTarget.parentId)?.name || '未找到'}` : '顶层项目'}</div><div className="project-detail-description">{projectDetailTarget.description || '暂无项目简介'}</div><div className="project-detail-grid"><div><span>项目状态</span><strong>{projectDetailTarget.status}</strong></div><div><span>项目进度</span><strong>{projectDetailTarget.progress || 0}%</strong></div><div><span>项目排期</span><strong>{projectDetailTarget.startDate || '未设置'} 至 {projectDetailTarget.endDate || '未设置'}</strong></div><div><span>成本</span><strong>{projectDetailTarget.cost || '未设置'}</strong></div><div><span>收入</span><strong>{projectDetailTarget.revenue || '未设置'}</strong></div><div><span>利润</span><strong>{projectDetailTarget.profit || '未设置'}</strong></div></div><div className="project-detail-files"><div className="field-label">关联文件</div>{projectDetailTarget.attachments?.length ? <FileAttachmentList files={projectDetailTarget.attachments} /> : <div className="project-detail-files__empty">暂无关联文件</div>}</div><div className="modal__actions"><Button label="关闭" variant="primary" type="button" onClick={() => setProjectDetailTarget(null)} /></div></>}</div></WorkspaceOverlay>}
-      {showCreateTask && <WorkspaceOverlay label="新增任务" onClose={() => setShowCreateTask(false)}><div className="modal modal--wide project-task-create-modal"><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">新增任务</Heading><div className="field-label">任务名称 <span className="field-required">*</span></div><TextInput label="任务名称" value={taskName} isLabelHidden width="100%" status={taskFormError && !taskName.trim() ? { type: 'error' } : undefined} isRequired hasAutoFocus onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createTask() } }} placeholder="一句话描述要完成的任务" onChange={(nextValue) => { setTaskName(nextValue); setTaskFormError('') }} />
+      {showCreateTask && <WorkspaceOverlay label="新增任务" onClose={closeTaskForm}><div className="modal modal--wide project-task-create-modal"><div className="project-task-create-modal__content"><Heading level={3} accessibilityLevel={2} className="modal__title">新增任务</Heading><div className="field-label">任务名称 <span className="field-required">*</span></div><TextInput label="任务名称" value={taskName} isLabelHidden width="100%" status={taskFormError && !taskName.trim() ? { type: 'error' } : undefined} isRequired hasAutoFocus onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); createTask() } }} placeholder="一句话描述要完成的任务" onChange={(nextValue) => { setTaskName(nextValue); setTaskFormError('') }} />
           <div className="task-schedule-row">
             <DateRangeField
               label="任务排期"
@@ -458,10 +480,11 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
               </SegmentedControl>
             </div>
           </div>
-          {taskFormError && <Banner status="error" title={<>{taskFormError}</>} />}<div className="field-label" style={{ marginTop: 16 }}>任务说明</div><RichTextField label="任务说明" value={taskContent} placeholder="目标、验收标准或执行说明…" onChange={setTaskContent} /><div className="field-label" style={{ marginTop: 16 }}>补充详情</div><RichTextField label="补充详情" value={taskDetail} placeholder="可选：负责人、依赖和备注…" onChange={setTaskDetail} /><div className="field-label" style={{ marginTop: 16 }}>关联文件</div><AttachmentPicker label="添加任务关联文件" description={taskFiles.length ? `已选择 ${taskFiles.length} 个文件` : undefined} onFiles={(files) => setTaskFiles((current) => [...current, ...files].slice(0, 20))} />{taskFileError && <Banner status="error" title={<>{taskFileError}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => { setTaskFiles([]); setTaskFileError(''); setShowCreateTask(false) }} /><Button label="创建任务" variant="primary" type="button" onClick={createTask} style={{ opacity: taskName.trim() && taskStartDate && taskEndDate ? 1 : .45 }} /></div></div></WorkspaceOverlay>}
-      {deleteTaskTarget && <WorkspaceOverlay label="确认删除任务？" onClose={() => setDeleteTaskTarget(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认删除任务？</Heading><div className="delete-confirm-modal__text">删除「{deleteTaskTarget.name}」后，任务及其关联的问题记录也会一并移除。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteTaskTarget(null)} /><Button label="确认删除" variant="destructive" type="button" onClick={() => deleteTask(deleteTaskTarget)} /></div></div></WorkspaceOverlay>}
+          {taskFormError && <Banner status="error" title={<>{taskFormError}</>} />}<div className="field-label" style={{ marginTop: 16 }}>任务说明</div><RichTextField label="任务说明" value={taskContent} placeholder="目标、验收标准或执行说明…" onChange={setTaskContent} /><div className="field-label" style={{ marginTop: 16 }}>补充详情</div><RichTextField label="补充详情" value={taskDetail} placeholder="可选：负责人、依赖和备注…" onChange={setTaskDetail} /><div className="field-label" style={{ marginTop: 16 }}>关联文件</div><AttachmentPicker label="添加任务关联文件" files={taskAttachments.files} onRemove={taskAttachments.remove} onFiles={taskAttachments.add} isDisabled={taskAttachments.saving} />{taskAttachments.error && <Banner status="error" title={<>{taskAttachments.error}</>} />}</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" isDisabled={taskAttachments.saving} onClick={closeTaskForm} /><Button label="创建任务" variant="primary" type="button" isLoading={taskAttachments.saving} onClick={() => void createTask()} style={{ opacity: taskName.trim() && taskStartDate && taskEndDate ? 1 : .45 }} /></div></div></WorkspaceOverlay>}
+      {deleteTaskTarget && <ConfirmDataDeletion title={'删除任务「' + deleteTaskTarget.name + '」？'} onClose={() => setDeleteTaskTarget(null)} onDelete={() => deleteTask(deleteTaskTarget)} />}
+      {deleteArchivedTarget && <ConfirmDataDeletion title={'删除项目「' + deleteArchivedTarget.name + '」？'} onClose={() => setDeleteArchivedTarget(null)} onDelete={() => deleteArchivedProject(deleteArchivedTarget)} /> }
       {deleteTarget && <WorkspaceOverlay label="确认归档项目？" onClose={() => setDeleteTarget(null)}><div className="modal delete-confirm-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">确认归档项目？</Heading><div className="delete-confirm-modal__text">归档「{deleteTarget.name}」后，它会从当前项目列表隐藏，可在归档列表中恢复。</div><div className="modal__actions"><Button label="取消" variant="ghost" type="button" onClick={() => setDeleteTarget(null)} /><Button label="确认归档" variant="destructive" type="button" onClick={() => archiveProject(deleteTarget)} /></div></div></WorkspaceOverlay>}
-      {showArchive && <WorkspaceOverlay label="归档项目" onClose={() => setShowArchive(false)}><div className="modal project-archive-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">归档项目</Heading>{archivedProjects.length === 0 ? <div className="project-archive__empty">暂无归档项目</div> : <div className="project-archive__list">{archivedProjects.map((project) => <ClickableCard padding={0} className="project-archive__item" key={project.id} label={`查看归档项目 ${project.name}`} onClick={() => void openProjectDetail(project)}><div><div className="project-archive__name">{project.name}</div><div className="project-archive__date">归档于 {new Date(project.archivedAt || project.createdAt).toLocaleDateString('zh-CN')}</div></div><Button label="恢复" variant="ghost" type="button" onClick={() => restoreProject(project)} /></ClickableCard>)}</div>}<div className="modal__actions"><Button label="关闭" variant="ghost" type="button" onClick={() => setShowArchive(false)} /></div></div></WorkspaceOverlay>}
+      {showArchive && <WorkspaceOverlay label="归档项目" onClose={() => setShowArchive(false)}><div className="modal project-archive-modal"><Heading level={3} accessibilityLevel={2} className="modal__title">归档项目</Heading>{archivedProjects.length === 0 ? <div className="project-archive__empty">暂无归档项目</div> : <div className="project-archive__list">{archivedProjects.map((project) => <ClickableCard padding={0} className="project-archive__item" key={project.id} label={`查看归档项目 ${project.name}`} onClick={() => void openProjectDetail(project)}><div><div className="project-archive__name">{project.name}</div><div className="project-archive__date">归档于 {new Date(project.archivedAt || project.createdAt).toLocaleDateString('zh-CN')}</div></div><div className="project-archive__actions"><Button label="恢复" variant="ghost" type="button" onClick={() => restoreProject(project)} /><Button label="永久删除" variant="destructive" type="button" onClick={() => setDeleteArchivedTarget(project)} /></div></ClickableCard>)}</div>}<div className="modal__actions"><Button label="关闭" variant="ghost" type="button" onClick={() => setShowArchive(false)} /></div></div></WorkspaceOverlay>}
     </div>
   )
 }

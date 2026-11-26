@@ -10,6 +10,7 @@ import { Heading, Text } from '@astryxdesign/core/Text'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { Toolbar } from '@astryxdesign/core/Toolbar'
 import { useState, type FormEvent } from 'react'
+import ConfirmDataDeletion from '../components/ConfirmDataDeletion'
 import TopBar from '../components/TopBar'
 import WorkspaceDialog from '../components/WorkspaceDialog'
 import WorkspaceIcon from '../components/Icon'
@@ -20,7 +21,7 @@ interface Props {
   onOpen: (space: Space) => void
   onCreate: (name: string, types: TypeName[]) => void
   onRename: (id: string, name: string) => void
-  onDelete: (id: string) => void
+  onDelete: (id: string) => Promise<void>
   onLogout: () => void
 }
 
@@ -92,14 +93,6 @@ export default function Home({ spaces, onOpen, onCreate, onRename, onDelete, onL
         </HStack>
       </form>
     </WorkspaceDialog>}
-    {deleteTarget && <WorkspaceDialog title="删除空间？" purpose="info" onClose={() => setDeleteTarget(null)}>
-      <div className="app-dialog-form">
-        <Text>删除「{deleteTarget.name}」后无法恢复。</Text>
-        <HStack gap={2} hAlign="end">
-          <Button label="取消" variant="secondary" onClick={() => setDeleteTarget(null)} />
-          <Button label="确认删除" variant="destructive" onClick={() => { onDelete(deleteTarget.id); setDeleteTarget(null) }} />
-        </HStack>
-      </div>
-    </WorkspaceDialog>}
+    {deleteTarget && <ConfirmDataDeletion title={'删除空间「' + deleteTarget.name + '」？'} onClose={() => setDeleteTarget(null)} onDelete={() => onDelete(deleteTarget.id)} />}
   </>
 }
