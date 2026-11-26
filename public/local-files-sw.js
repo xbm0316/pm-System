@@ -1,36 +1,44 @@
-const DB_NAME = 'jawcat-local-files'
-const DB_VERSION = 1
-const FILE_STORE = 'files'
-
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
 
-function getFile(id) {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onerror = () => reject(request.error)
-    request.onsuccess = () => {
-      const db = request.result
-      const tx = db.transaction(FILE_STORE, 'readonly')
-      const get = tx.objectStore(FILE_STORE).get(id)
-      get.onsuccess = () => { resolve(get.result || null); db.close() }
-      get.onerror = () => { reject(get.error); db.close() }
+async function getAttachment(clientId, id) {
+  const client = clientId ? await self.clients.get(clientId) : null
+  if (!client) return null
+  return new Promise((resolve) => {
+    const { port1, port2 } = new MessageChannel()
+    const finish = (result) => {
+      clearTimeout(timeout)
+      port1.close()
+      resolve(result)
     }
+    const timeout = setTimeout(() => finish(null), 25000)
+    port1.onmessage = (event) => finish(event.data)
+    client.postMessage({ type: 'workspace-file-preview', id }, [port2])
   })
 }
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
-  if (event.request.method !== 'GET' || !url.pathname.startsWith('/local-files/')) return
+  if (url.origin !== self.location.origin || event.request.method !== 'GET' || !url.pathname.startsWith('/local-files/')) return
   event.respondWith((async () => {
     try {
       const id = decodeURIComponent(url.pathname.slice('/local-files/'.length))
-      const record = await getFile(id)
-      const file = record?.blob ?? await record?.handle?.getFile()
-      if (!file) return new Response('File not found', { status: 404 })
-      return new Response(file, { status: 200, headers: { 'Content-Type': record.mimeType || 'application/octet-stream', 'Content-Length': String(file.size), 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(record.originalName || 'attachment')}`, 'Cache-Control': 'no-store' } })
+      const attachment = await getAttachment(event.clientId, id)
+      if (!attachment?.file) return new Response('File not found', { status: 404 })
+      const { file, name } = attachment
+      return new Response(file, {
+        status: 200,
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'Content-Length': String(file.size),
+          'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(name)}`,
+          'Content-Security-Policy': 'sandbox',
+          'X-Content-Type-Options': 'nosniff',
+          'Cache-Control': 'no-store',
+        },
+      })
     } catch {
-      return new Response('Local file unavailable', { status: 500 })
+      return new Response('Attachment unavailable', { status: 500 })
     }
   })())
 })

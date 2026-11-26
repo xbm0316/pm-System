@@ -56,7 +56,7 @@ interface KnowledgeData {
 
 interface Props extends KnowledgeData {
   searchQuery: string
-  onChange: (update: (data: KnowledgeData) => KnowledgeData) => void
+  onChange: (update: (data: KnowledgeData) => KnowledgeData) => Promise<void>
 }
 
 const columnColors = [
@@ -133,8 +133,7 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
           ? data.tutorialCards.map((card) => card.id === saved.id ? saved : card)
           : [...data.tutorialCards, saved],
       }
-    })
-    setCardDraft(null)
+    }).then(() => setCardDraft(null), () => undefined)
   }
 
   function saveType(event: FormEvent<HTMLFormElement>) {
@@ -146,8 +145,7 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
       knowledgeTypes: data.knowledgeTypes.some((type) => type.id === saved.id)
         ? data.knowledgeTypes.map((type) => type.id === saved.id ? saved : type)
         : [...data.knowledgeTypes, saved],
-    }))
-    setTypeDraft(null)
+    })).then(() => setTypeDraft(null), () => undefined)
   }
 
   function moveCard(cardId: string, typeId: string) {
@@ -158,7 +156,7 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
       tutorialCards: data.tutorialCards.map((card) => card.id === cardId && card.typeId !== typeId
         ? { ...card, typeId, createdAt: card.createdAt ?? card.updatedAt, updatedAt: now }
         : card),
-    }))
+    })).catch(() => undefined)
   }
 
   function dropTarget(event: PointerEvent<HTMLElement>, card: TutorialCard) {
@@ -207,8 +205,7 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
         knowledgeTypes: data.knowledgeTypes.filter((type) => type.id !== deletion.id),
         tutorialCards: data.tutorialCards.filter((card) => card.typeId !== deletion.id),
       }
-    })
-    setDeletion(null)
+    }).then(() => setDeletion(null), () => undefined)
   }
 
   return <>

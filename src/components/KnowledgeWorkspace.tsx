@@ -24,7 +24,7 @@ interface Props {
   spaceId: string
   types: WorkspaceCollectionType[]
   resources: KnowledgeResource[]
-  onChange: (types: WorkspaceCollectionType[], resources: KnowledgeResource[]) => void
+  onChange: (types: WorkspaceCollectionType[], resources: KnowledgeResource[]) => Promise<void>
   searchQuery?: string
 }
 
@@ -80,10 +80,10 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
   const query = searchQuery.trim().toLocaleLowerCase()
   const resourcesByType = useMemo(() => new Map(types.map((type) => [type.id, resources.filter((item) => item.typeId === type.id).filter((item) => !query || `${item.name} ${item.fileName} ${item.mimeType}`.toLocaleLowerCase().includes(query)).sort((a, b) => b.createdAt - a.createdAt)])), [query, resources, types])
 
-  function addType() {
+  async function addType() {
     const name = typeName.trim()
     if (!name) return setError('请输入类型名称')
-    onChange([...types, { id: `knowledge-${Date.now().toString(36)}`, spaceId, name, createdAt: Date.now() }], resources)
+    try { await onChange([...types, { id: `knowledge-${Date.now().toString(36)}`, spaceId, name, createdAt: Date.now() }], resources) } catch { return setError("无法保存类型，请重试") }
     setTypeName(''); setError(''); setShowCreateType(false)
   }
   async function addResource() {
@@ -101,7 +101,7 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
         fileName: file.name, mimeType: file.type, size: file.size, fileId: file.fileId,
         fileUrl: file.url, relativePath: file.relativePath, createdAt: now + index, updatedAt: now + index,
       }))
-      onChange(types, [...added, ...resources])
+      return onChange(types, [...added, ...resources])
     })
     if (saved) { setResourceName(''); setShowUpload(false) }
   }
@@ -145,7 +145,12 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
     }
     const updatedAt = Date.now()
     const updated = { ...detail, name: editorName.trim(), fileId: nextFileId, fileUrl: nextFileUrl, relativePath: nextRelativePath, mimeType: nextMimeType, size: nextSize, rotation, updatedAt }
-    onChange(types, resources.map((item) => item.id === detail.id ? updated : item))
+    try {
+      await onChange(types, resources.map((item) => item.id === detail.id ? updated : item))
+    } catch (cause) {
+      if (replacement) await deleteLocalFile(nextFileId).catch(() => undefined)
+      throw cause
+    }
     setDetail(updated); setEditing(false); setError('')
     if (replacement) {
       try { await deleteLocalFile(detail.fileId) }
@@ -156,20 +161,20 @@ export default function KnowledgeWorkspace({ spaceId, types, resources, onChange
     if (!deleteType) return
     const removing = resources.filter((item) => item.typeId === deleteType.id)
     await deleteLocalFilesForEntities(removing.map((item) => ({ type: 'knowledge', id: item.id })), spaceId)
-    onChange(types.filter((type) => type.id !== deleteType.id), resources.filter((item) => item.typeId !== deleteType.id))
+    await onChange(types.filter((type) => type.id !== deleteType.id), resources.filter((item) => item.typeId !== deleteType.id))
   }
 
   async function removeResource() {
     if (!deleteResource) return
     await deleteLocalFilesForEntity('knowledge', deleteResource.id, spaceId)
-    onChange(types, resources.filter((item) => item.id !== deleteResource.id))
+    await onChange(types, resources.filter((item) => item.id !== deleteResource.id))
     if (detail?.id === deleteResource.id) setDetail(null)
   }
 
   function moveType(targetId: string) {
     if (!draggedTypeId || draggedTypeId === targetId) return
     const from = types.findIndex((type) => type.id === draggedTypeId); const to = types.findIndex((type) => type.id === targetId); if (from < 0 || to < 0) return
-    const next = [...types]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); onChange(next, resources); setDraggedTypeId(null)
+    const next = [...types]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); void onChange(next, resources).catch(() => undefined); setDraggedTypeId(null)
   }
   function formatSize(size: number) { if (size < 1024) return `${size} B`; if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`; return `${(size / (1024 * 1024)).toFixed(1)} MB` }
   function openUpload(typeId: string) { setSelectedTypeId(typeId); setResourceName(''); attachmentDraft.reset(); setError(''); setShowUpload(true) }

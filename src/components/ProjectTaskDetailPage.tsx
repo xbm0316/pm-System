@@ -29,10 +29,10 @@ interface Props {
   projectName?: string
   task: ProjectTask
   issues: ProjectIssue[]
-  onStatusChange: (taskId: string, status: TaskStatus) => void
-  onAddIssue: (issue: ProjectIssue) => void
-  onUpdateIssue: (issueId: string, patch: Partial<ProjectIssue>) => void
-  onUpdateTask: (taskId: string, patch: Partial<ProjectTask>) => void
+  onStatusChange: (taskId: string, status: TaskStatus) => Promise<void>
+  onAddIssue: (issue: ProjectIssue) => Promise<void>
+  onUpdateIssue: (issueId: string, patch: Partial<ProjectIssue>) => Promise<void>
+  onUpdateTask: (taskId: string, patch: Partial<ProjectTask>) => Promise<void>
   onClose: () => void
 }
 
@@ -94,13 +94,13 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
 
   async function removeAttachment(attachment: ProjectTaskAttachment) {
     await deleteLocalFile(attachment.fileId || attachment.id)
-    onUpdateTask(task.id, { attachments: (task.attachments || []).filter((item) => item.id !== attachment.id) })
+    await onUpdateTask(task.id, { attachments: (task.attachments || []).filter((item) => item.id !== attachment.id) })
     setDeleteAttachment(null)
   }
 
-  function addIssue() {
+  async function addIssue() {
     if (!title.trim()) return
-    onAddIssue({
+    const saved = await onAddIssue({
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
       taskId: task.id,
       title: title.trim(),
@@ -108,7 +108,8 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
       status: '待处理',
       createdAt: Date.now(),
       endDate: issueEndDate || undefined,
-    })
+    }).then(() => true, () => false)
+    if (!saved) return
     setTitle('')
     setDescription('')
     setIssueEndDate('')
@@ -169,14 +170,14 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
                 {TASK_STATUSES.map((status) => {
                   const active = TASK_STATUSES.indexOf(status) <= TASK_STATUSES.indexOf(task.status)
                   return (
-                    <button key={status} type="button" className={`project-task-status${active ? ' project-task-status--active' : ''}${task.status === status ? ' project-task-status--current' : ''}`} onClick={() => onStatusChange(task.id, status)}>
+                    <button key={status} type="button" className={`project-task-status${active ? ' project-task-status--active' : ''}${task.status === status ? ' project-task-status--current' : ''}`} onClick={() => void onStatusChange(task.id, status).catch(() => undefined)}>
                       <span className="project-task-status__dot"><Icon name="check" size={11} /></span>
                       <span>{status}</span>
                     </button>
                   )
                 })}
               </div>
-              <div className="progress-percent-field">任务进度 <NumberInput label="任务进度" value={task.progress || 0} isLabelHidden width="100%" min={0} max={100} isWheelEnabled={false} onChange={(nextValue) => onUpdateTask(task.id, { progress: Math.min(100, Math.max(0, nextValue || 0)) })} /><span>%</span></div>
+              <div className="progress-percent-field">任务进度 <NumberInput label="任务进度" value={task.progress || 0} isLabelHidden width="100%" min={0} max={100} isWheelEnabled={false} onChange={(nextValue) => void onUpdateTask(task.id, { progress: Math.min(100, Math.max(0, nextValue || 0)) }).catch(() => undefined)} /><span>%</span></div>
             </section>
             <section className="project-task-section">
               <div className="project-task-section__label">任务内容</div>
@@ -206,7 +207,7 @@ export default function ProjectTaskDetailPage({ spaceId, projectName, task, issu
             <section className="project-issue-list">
               {taskIssues.length === 0 ? <div className="project-issues__empty">暂未记录问题</div> : taskIssues.map((issue) => (
                 <ClickableCard label={`查看问题 ${issue.title}`} padding={0} className="project-issue" key={issue.id} onClick={() => setOpenIssueId(issue.id)}>
-                  <div className="project-issue__top"><div className="project-issue__title">{issue.title}</div><div className="project-issue-status-list">{issueStatuses.map((status) => <button type="button" key={status} className={`project-task-status project-issue-status${status === issue.status ? ' project-task-status--active project-task-status--current' : ''}`} onClick={() => onUpdateIssue(issue.id, { status })}><span className="project-task-status__dot"><Icon name="check" size={11} /></span><span>{status}</span></button>)}</div></div>
+                  <div className="project-issue__top"><div className="project-issue__title">{issue.title}</div><div className="project-issue-status-list">{issueStatuses.map((status) => <button type="button" key={status} className={`project-task-status project-issue-status${status === issue.status ? ' project-task-status--active project-task-status--current' : ''}`} onClick={() => void onUpdateIssue(issue.id, { status }).catch(() => undefined)}><span className="project-task-status__dot"><Icon name="check" size={11} /></span><span>{status}</span></button>)}</div></div>
                   {issue.description && <RichTextContent value={issue.description} className="project-issue__description" />}
                   {issue.endDate && <div className="project-issue__date">截止于 {issue.endDate}</div>}
                   <div className="project-issue__date">{new Date(issue.createdAt).toLocaleString('zh-CN', { hour12: false })}</div>

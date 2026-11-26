@@ -20,49 +20,17 @@ export function formatTodoDueAt(dueAt: number) {
   return dateTimeFormat.format(dueAt)
 }
 
-function readTodos(storageKey: string): Todo[] {
-  const raw = localStorage.getItem(storageKey)
-  if (!raw) return []
-  const saved: unknown = JSON.parse(raw)
-  return Array.isArray(saved) ? saved : []
+export function normalizeTodos(value: unknown): Todo[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is Todo => (
+    item && typeof item.id === 'string' && typeof item.title === 'string'
+    && typeof item.content === 'string' && Number.isFinite(item.dueAt) && Math.abs(item.dueAt) <= 8.64e15
+  ))
 }
 
-export function useWorkspaceTodos(ownerPhone: string, spaceId: string) {
-  const storageKey = `jawcat.workspace-todos.v1.${ownerPhone}.${spaceId}`
-  const [todos, setTodos] = useState<Todo[]>(() => {
-    try {
-      return readTodos(storageKey)
-    } catch {
-      return []
-    }
-  })
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    function refreshFromStorage(event: StorageEvent) {
-      if (event.storageArea !== localStorage || (event.key !== storageKey && event.key !== null)) return
-      try {
-        setTodos(readTodos(storageKey))
-        setError('')
-      } catch {
-        setError('无法读取此工作空间的待办事项')
-      }
-    }
-    window.addEventListener('storage', refreshFromStorage)
-    return () => window.removeEventListener('storage', refreshFromStorage)
-  }, [storageKey])
-
-  function updateTodos(update: (current: Todo[]) => Todo[]) {
-    try {
-      const next = update(readTodos(storageKey))
-      localStorage.setItem(storageKey, JSON.stringify(next))
-      setTodos(next)
-      setError('')
-      return true
-    } catch {
-      setError('未能保存待办事项，请检查浏览器存储设置后重试')
-      return false
-    }
+export function workspaceTodoActions(update: (change: (current: Todo[]) => Todo[]) => Promise<void>) {
+  function updateTodos(change: (current: Todo[]) => Todo[]) {
+    return update(change).then(() => true, () => false)
   }
 
   function saveTodo(fields: TodoFields, id?: string) {
@@ -80,7 +48,7 @@ export function useWorkspaceTodos(ownerPhone: string, spaceId: string) {
     return updateTodos((current) => current.filter((item) => item.id !== id))
   }
 
-  return { todos, error, saveTodo, completeTodo, deleteTodo }
+  return { saveTodo, completeTodo, deleteTodo }
 }
 
 export function useTodoReminders(todos: Todo[]) {

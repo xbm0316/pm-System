@@ -17,7 +17,7 @@ interface Props {
   tasks: ProjectTask[]
   issues: ProjectIssue[]
   summaries: ProjectSummary[]
-  onChange: (summaries: ProjectSummary[]) => void
+  onChange: (summaries: ProjectSummary[]) => Promise<void>
   onClose: () => void
 }
 
@@ -46,7 +46,7 @@ export default function SummaryWorkspace({ projects, tasks, issues, summaries, o
   const activeProject = projects.find((project) => project.id === projectId)
 
   function openCreate() { setStartDate(''); setEndDate(''); setError(''); setShowCreate(true) }
-  function createSummary() {
+  async function createSummary() {
     if (!projectId) return setError('请选择项目')
     if (!startDate || !endDate) return setError('请选择总结时间段')
     if (endDate < startDate) return setError('结束日期不能早于开始日期')
@@ -58,9 +58,13 @@ export default function SummaryWorkspace({ projects, tasks, issues, summaries, o
     const completedIssues = projectIssues.filter((issue) => issue.status === '已处理' && (issue.updatedAt || issue.createdAt) >= new Date(`${startDate}T00:00:00`).getTime() && (issue.updatedAt || issue.createdAt) <= new Date(`${endDate}T23:59:59`).getTime()).map((issue) => ({ id: issue.id, name: issue.title, date: formatDate(issue.updatedAt || issue.createdAt) }))
     const pendingIssues = projectIssues.filter((issue) => issue.status !== '已处理' && issue.endDate && issue.endDate >= startDate && issue.endDate <= endDate).map((issue) => ({ id: issue.id, name: issue.title, date: issue.endDate || '', overdueDays: issue.endDate && issue.endDate < new Date().toISOString().slice(0, 10) ? dayDiff(issue.endDate, new Date().toISOString().slice(0, 10)) : 0 }))
     const summary: ProjectSummary = { id: `summary-${Date.now().toString(36)}`, projectId, startDate, endDate, projectProgress: `${activeProject?.progress || 0}%`, projectStatus: activeProject?.status, projectProgressPercent: activeProject?.progress || 0, completedTasks, pendingTasks, completedIssues, pendingIssues, createdAt: Date.now() }
-    onChange([summary, ...summaries]); setShowCreate(false); setDetail(summary)
+    try {
+      await onChange([summary, ...summaries])
+      setShowCreate(false)
+      setDetail(summary)
+    } catch { setError('无法保存总结，请重试') }
   }
-  function syncSummary(summary: ProjectSummary) {
+  async function syncSummary(summary: ProjectSummary) {
     const project = projects.find((item) => item.id === summary.projectId)
     if (!project) return
     const projectTasks = tasks.filter((task) => task.projectId === summary.projectId)
@@ -71,9 +75,13 @@ export default function SummaryWorkspace({ projects, tasks, issues, summaries, o
     const completedIssues = projectIssues.filter((issue) => issue.status === '已处理' && (issue.updatedAt || issue.createdAt) >= new Date(`${summary.startDate}T00:00:00`).getTime() && (issue.updatedAt || issue.createdAt) <= new Date(`${summary.endDate}T23:59:59`).getTime()).map((issue) => ({ id: issue.id, name: issue.title, date: formatDate(issue.updatedAt || issue.createdAt) }))
     const pendingIssues = projectIssues.filter((issue) => issue.status !== '已处理' && issue.endDate && issue.endDate >= summary.startDate && issue.endDate <= summary.endDate).map((issue) => ({ id: issue.id, name: issue.title, date: issue.endDate || '', overdueDays: issue.endDate && issue.endDate < new Date().toISOString().slice(0, 10) ? dayDiff(issue.endDate, new Date().toISOString().slice(0, 10)) : 0 }))
     const next = { ...summary, projectProgress: `${project.progress || 0}%`, projectStatus: project.status, projectProgressPercent: project.progress || 0, completedTasks, pendingTasks, completedIssues, pendingIssues }
-    onChange(summaries.map((item) => item.id === summary.id ? next : item)); setDetail(next)
+    if (await onChange(summaries.map((item) => item.id === summary.id ? next : item)).then(() => true, () => false)) setDetail(next)
   }
-  function removeSummary(summary: ProjectSummary) { onChange(summaries.filter((item) => item.id !== summary.id)); setDeleteTarget(null); setDetail(null) }
+  async function removeSummary(summary: ProjectSummary) {
+    if (!await onChange(summaries.filter((item) => item.id !== summary.id)).then(() => true, () => false)) return
+    setDeleteTarget(null)
+    setDetail(null)
+  }
 
     return <Drawer label="项目总结" side="end" width={560} isOpen onOpenChange={(open) => { if (!open) onClose() }}>
       <DrawerHeader title="总结记录" onOpenChange={(open) => { if (!open) onClose() }} hasDivider />

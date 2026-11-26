@@ -24,9 +24,9 @@ interface Props {
   searchQuery: string
   error: string
   onOpenDetails: (id: string) => void
-  onSave: (fields: TodoFields, id?: string) => boolean
-  onDelete: (id: string) => boolean
-  onComplete: (id: string) => boolean
+  onSave: (fields: TodoFields, id?: string) => Promise<boolean>
+  onDelete: (id: string) => Promise<boolean>
+  onComplete: (id: string) => Promise<boolean>
 }
 
 interface Draft {
@@ -53,6 +53,7 @@ export function TodoDetailDialog({ todo, onClose }: { todo: Todo; onClose: () =>
 export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails, onSave, onDelete, onComplete }: Props) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Todo | null>(null)
+  const [saving, setSaving] = useState(false)
   const [dateInvalid, setDateInvalid] = useState(false)
   const titleInput = useRef<HTMLInputElement>(null)
   const canSave = Boolean(draft?.title.trim() && draft.dueAt && !dateInvalid)
@@ -78,13 +79,16 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
     openDraft({ id: todo.id, title: todo.title, content: todo.content, dueAt: `${dateKey(due)}T${time}` as ISODateTimeString })
   }
 
-  function save(event: FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!draft?.dueAt || !canSave || event.currentTarget.querySelector('[aria-invalid="true"]')) return
+    if (!draft?.dueAt || !canSave || saving || event.currentTarget.querySelector('[aria-invalid="true"]')) return
     const dueAt = new Date(draft.dueAt).getTime()
     if (!Number.isFinite(dueAt)) return
     const keepOpen = !draft.id && (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'continue'
-    if (!onSave({ title: draft.title.trim(), content: draft.content.trim(), dueAt }, draft.id)) return
+    setSaving(true)
+    const saved = await onSave({ title: draft.title.trim(), content: draft.content.trim(), dueAt }, draft.id)
+    setSaving(false)
+    if (!saved) return
     if (keepOpen) {
       openDraft(newDraft())
       titleInput.current?.focus()
@@ -118,7 +122,7 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
                     <HStack gap={1} hAlign="end" wrap="wrap">
                       <IconButton label={`编辑 ${item.title}`} size="sm" variant="ghost" icon={<Icon name="edit" size={14} />} onClick={() => editTodo(item)} />
                       <IconButton label={`删除 ${item.title}`} size="sm" variant="ghost" icon={<Icon name="trash" size={14} />} onClick={() => setDeleteTarget(item)} />
-                      {!done && <Button size="sm" variant="secondary" label="完成" aria-label={`完成 ${item.title}`} onClick={() => onComplete(item.id)} />}
+                      {!done && <Button size="sm" variant="secondary" label="完成" aria-label={`完成 ${item.title}`} onClick={() => { void onComplete(item.id) }} />}
                     </HStack>
                   </VStack>
                 </ClickableCard>)}
@@ -128,7 +132,7 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
         </div>
       </LayoutContent>}
     />
-    {draft && <WorkspaceDialog title={draft.id ? '编辑待办' : '新增待办'} onClose={() => setDraft(null)} className="todo-dialog">
+    {draft && <WorkspaceDialog title={draft.id ? '编辑待办' : '新增待办'} onClose={() => !saving && setDraft(null)} className="todo-dialog">
       <form className="app-dialog-form" onSubmit={save}>
         <VStack gap={3}>
           <TextInput ref={titleInput} label="标题" isRequired hasAutoFocus value={draft.title} onChange={(title) => setDraft({ ...draft, title })} />
@@ -138,19 +142,25 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
           {error && <Banner status="error" title={error} />}
         </VStack>
         <WorkspaceDialogActions>
-          <Button label="取消" variant="secondary" onClick={() => setDraft(null)} />
-          <Button label="保存" variant="primary" type="submit" isDisabled={!canSave} />
-          {!draft.id && <Button label="连续保存" variant="ghost" type="submit" value="continue" isDisabled={!canSave} />}
+          <Button label="取消" variant="secondary" isDisabled={saving} onClick={() => setDraft(null)} />
+          <Button label="保存" variant="primary" type="submit" isDisabled={!canSave || saving} />
+          {!draft.id && <Button label="连续保存" variant="ghost" type="submit" value="continue" isDisabled={!canSave || saving} />}
         </WorkspaceDialogActions>
       </form>
     </WorkspaceDialog>}
-    {deleteTarget && <WorkspaceDialog title="确认删除待办？" onClose={() => setDeleteTarget(null)} purpose="info">
+    {deleteTarget && <WorkspaceDialog title="确认删除待办？" onClose={() => !saving && setDeleteTarget(null)} purpose="info">
       <div className="app-dialog-form">
         <Text>删除「{deleteTarget.title}」后无法恢复。</Text>
         {error && <Banner status="error" title={error} />}
         <WorkspaceDialogActions>
-          <Button label="取消" variant="secondary" onClick={() => setDeleteTarget(null)} />
-          <Button label="确认删除" variant="destructive" onClick={() => { if (onDelete(deleteTarget.id)) setDeleteTarget(null) }} />
+          <Button label="取消" variant="secondary" isDisabled={saving} onClick={() => setDeleteTarget(null)} />
+          <Button label="确认删除" variant="destructive" isLoading={saving} onClick={() => {
+            setSaving(true)
+            void onDelete(deleteTarget.id).then((saved) => {
+              setSaving(false)
+              if (saved) setDeleteTarget(null)
+            })
+          }} />
         </WorkspaceDialogActions>
       </div>
     </WorkspaceDialog>}

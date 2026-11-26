@@ -29,7 +29,13 @@ import { MENUS, uid } from '../lib/store'
 import { deleteLocalFile, deleteLocalFilesForEntity, getLocalFile, localFileUrl, type LocalAttachment } from '../lib/localFiles'
 import FileAttachmentList from './FileAttachmentList'
 
-interface OperationsWorkspaceProps { spaceId: string; ownerPhone: string; activeMenu: string; searchQuery?: string }
+interface OperationsWorkspaceProps {
+  spaceId: string
+  activeMenu: string
+  searchQuery?: string
+  state: OperationsState
+  updateState: (change: (current: OperationsState) => OperationsState) => Promise<void>
+}
 type ProductConclusion = '继续研究' | '进入测试' | '准备上架' | '作为备选' | '暂停'
 type ProductCurrency = 'CNY' | 'USD'
 type CampaignStatus = '准备中' | '测试中' | '放量中' | '暂停'
@@ -64,9 +70,8 @@ type OpsProduct = {
 }
 interface OpsCampaign { id: string; name: string; platform: string; productId: string; landingPage: string; dailyBudget: number; totalBudget: number; spend: number; orders: number; revenue: number; status: CampaignStatus; notes: string; createdAt: number }
 interface OpsReview { id: string; title: string; date: string; scope: string; completed: string; problems: string; insight: string; decision: ReviewDecision; nextAction: string; attachments: LocalAttachment[]; createdAt: number }
-interface OperationsState { tutorialCards: TutorialCard[]; products: OpsProduct[]; campaigns: OpsCampaign[]; reviews: OpsReview[]; knowledgeTypes?: TutorialType[] }
+export interface OperationsState { tutorialCards: TutorialCard[]; products: OpsProduct[]; campaigns: OpsCampaign[]; reviews: OpsReview[]; knowledgeTypes?: TutorialType[] }
 
-const STORAGE_PREFIX = 'jawcat.operations.v4.'
 const TUTORIAL_BASE = 'https://ecomwith.com/zh/tutorials/basics/'
 const TOOLS_BASE = 'https://ecomwith.com/zh/tools/'
 const tutorialTypes: TutorialType[] = [
@@ -107,7 +112,23 @@ tutorialSeeds.push(
 )
 function initialCards(): TutorialCard[] { const now = Date.now(); return tutorialSeeds.map((definition, index) => ({ id: `tutorial-${index + 1}`, ...definition, resourceType: '教程', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', createdAt: now, updatedAt: now })) }
 function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
-function readState(ownerPhone: string, spaceId: string): OperationsState { try { const raw = localStorage.getItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`); if (!raw) return initialState(); const parsed = JSON.parse(raw) as Partial<OperationsState>; return { tutorialCards: Array.isArray(parsed.tutorialCards) && parsed.tutorialCards.length ? parsed.tutorialCards : initialCards(), products: Array.isArray(parsed.products) ? parsed.products.map((item) => ({ ...item, images: Array.isArray(item.images) ? item.images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) : (item.image ? [item.image] : []) })) : [], campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [], reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({ ...item, attachments: Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is LocalAttachment => Boolean(entry && typeof entry === 'object' && (entry as LocalAttachment).id)).map((entry) => ({ ...entry, url: entry.fileId ? localFileUrl(entry.fileId) : entry.url })) : [] })) : [], knowledgeTypes: Array.isArray(parsed.knowledgeTypes) && parsed.knowledgeTypes.length ? parsed.knowledgeTypes : tutorialTypes } } catch { return initialState() } }
+export function normalizeOperationsState(value: unknown): OperationsState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return initialState()
+  const parsed = value as Partial<OperationsState>
+  return {
+    tutorialCards: Array.isArray(parsed.tutorialCards) ? parsed.tutorialCards : initialCards(),
+    products: Array.isArray(parsed.products) ? parsed.products.map((item) => {
+      const images = item.images?.length ? item.images : item.image ? [item.image] : []
+      return { ...item, images: images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) }
+    }) : [],
+    campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [],
+    reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({
+      ...item,
+      attachments: Array.isArray(item.attachments) ? item.attachments.filter((file) => file && typeof file === 'object' && file.id) : [],
+    })) : [],
+    knowledgeTypes: parsed.knowledgeTypes?.length ? parsed.knowledgeTypes : tutorialTypes,
+  }
+}
 function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
 function productMoney(value: number, currency: ProductCurrency = 'CNY') {
   return (currency === 'USD' ? 'US$' : '¥') + money(value)
@@ -274,9 +295,7 @@ function ProductImagePicker({ images, fileIds, imagePaths, onChange, attachments
   </div>
 }
 
-export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
-  const [state, setState] = useState<OperationsState>(() => readState(ownerPhone, spaceId))
-  const stateRef = useRef(state)
+export default function OperationsWorkspace({ state, updateState, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
   const productAttachments = useAttachmentDraft({ maxFiles: Number.POSITIVE_INFINITY })
   const reviewAttachments = useAttachmentDraft()
   const [productDraft, setProductDraft] = useState<OpsProduct | null>(null)
@@ -288,18 +307,6 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
   const menus = MENUS['独立站电商运营']
   const query = searchQuery.trim().toLocaleLowerCase()
   const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
-  useEffect(() => {
-    const next = readState(ownerPhone, spaceId)
-    stateRef.current = next
-    setState(next)
-  }, [ownerPhone, spaceId])
-
-  function updateState(updater: (current: OperationsState) => OperationsState) {
-    const next = updater(stateRef.current)
-    localStorage.setItem(STORAGE_PREFIX + ownerPhone + '.' + spaceId, JSON.stringify(next))
-    stateRef.current = next
-    setState(next)
-  }
   const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier}`.toLocaleLowerCase().includes(query)), [query, state.products])
   const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
   function newProduct() { productAttachments.reset(); setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', attachments: [], createdAt: Date.now() }) }
@@ -317,7 +324,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     event.preventDefault()
     const draft = productDraft
     if (!draft?.name.trim() || (productTab === 'basic' && !draft.description) || event.currentTarget.querySelector('[aria-invalid="true"]')) return
-    const previous = stateRef.current.products.find((item) => item.id === draft.id)
+    const previous = state.products.find((item) => item.id === draft.id)
     const saved = await productAttachments.save({ spaceId, entityType: 'product', entityId: draft.id, pathSegments: ['选品', draft.name.trim(), '商品图片'] }, (added) => {
       const existing = draft.images || []
       const images = [...existing, ...added.map((file) => file.url)]
@@ -326,7 +333,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
         imageFileIds: [...existing.map((_, index) => draft.imageFileIds?.[index] || ''), ...added.map((file) => file.fileId)],
         imagePaths: [...existing.map((_, index) => draft.imagePaths?.[index] || ''), ...added.map((file) => file.relativePath || '')],
       }
-      updateState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), next] }))
+      return updateState((current) => ({ ...current, products: [...current.products.filter((item) => item.id !== draft.id), next] }))
     })
     if (!saved) return
     const removed = (previous?.imageFileIds || []).filter((id) => !draft.imageFileIds?.includes(id))
@@ -334,7 +341,15 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     setProductDraft(null)
   }
   function newCampaign() { setCampaignDraft({ id: uid(), name: '', platform: 'Meta', productId: '', landingPage: '', dailyBudget: 0, totalBudget: 0, spend: 0, orders: 0, revenue: 0, status: '准备中', notes: '', createdAt: Date.now() }) }
-  function saveCampaign(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const draft = campaignDraft; if (!draft?.name.trim() || event.currentTarget.querySelector('[aria-invalid="true"]')) return; updateState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] })); setCampaignDraft(null) }
+  async function saveCampaign(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const draft = campaignDraft
+    if (!draft?.name.trim() || event.currentTarget.querySelector('[aria-invalid="true"]')) return
+    try {
+      await updateState((current) => ({ ...current, campaigns: [...current.campaigns.filter((item) => item.id !== draft.id), draft] }))
+      setCampaignDraft(null)
+    } catch { /* Workspace reports the sync error while preserving the draft. */ }
+  }
   function newReview() { reviewAttachments.reset(); setReviewDraft({ id: uid(), title: '', date: new Date().toISOString().slice(0, 10), scope: '教程学习', completed: '', problems: '', insight: '', decision: '继续', nextAction: '', attachments: [], createdAt: Date.now() }) }
   function closeReview() {
     if (reviewAttachments.saving) return
@@ -345,10 +360,10 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     event.preventDefault()
     const draft = reviewDraft
     if (!draft?.title.trim()) return
-    const previous = stateRef.current.reviews.find((item) => item.id === draft.id)
+    const previous = state.reviews.find((item) => item.id === draft.id)
     const saved = await reviewAttachments.save({ spaceId, entityType: 'ops-review', entityId: draft.id, pathSegments: ['独立站运营', '复盘', draft.id] }, (added) => {
       const next = { ...draft, attachments: [...draft.attachments, ...added] }
-      updateState((current) => ({ ...current, reviews: [...current.reviews.filter((item) => item.id !== draft.id), next] }))
+      return updateState((current) => ({ ...current, reviews: [...current.reviews.filter((item) => item.id !== draft.id), next] }))
     })
     if (!saved) return
     const removed = (previous?.attachments || []).filter((file) => !draft.attachments.some((item) => item.id === file.id))
@@ -359,7 +374,7 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     if (!deleteTarget) return
     const { type, id } = deleteTarget
     await deleteLocalFilesForEntity(type, id, spaceId)
-    updateState((current) => {
+    await updateState((current) => {
       if (type === 'product') return { ...current, products: current.products.filter((item) => item.id !== id) }
       if (type === 'ops-review') return { ...current, reviews: current.reviews.filter((item) => item.id !== id) }
       return { ...current, campaigns: current.campaigns.filter((item) => item.id !== id) }

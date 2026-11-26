@@ -5,18 +5,26 @@ import { VStack } from '@astryxdesign/core/Layout'
 import { Heading } from '@astryxdesign/core/Text'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { useState, type FormEvent } from 'react'
-import { ALLOWED_PHONES } from '../lib/store'
+import { signIn } from '../lib/account'
 
-export default function Login({ onLogin }: { onLogin: (phone: string) => void }) {
+export default function Login() {
   const [phone, setPhone] = useState('')
+  const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const value = phone.trim()
-    if (!value) return
-    if (ALLOWED_PHONES.includes(value)) onLogin(value)
-    else setError('该账号无权限')
+    if (!phone.trim() || !password || submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      await signIn(phone, password)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '暂时无法登录，请重试')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -26,9 +34,10 @@ export default function Login({ onLogin }: { onLogin: (phone: string) => void })
           <form onSubmit={submit}>
             <VStack gap={4}>
               <Heading level={2} accessibilityLevel={1}>登录工作空间</Heading>
-              <TextInput label="手机号" type="tel" autoComplete="tel" hasAutoFocus width="100%" value={phone} onChange={(value) => { setPhone(value); setError('') }} />
+              <TextInput label="手机号" type="tel" autoComplete="username" hasAutoFocus width="100%" value={phone} onChange={(value) => { setPhone(value); setError('') }} />
+              <TextInput label="密码" type="password" autoComplete="current-password" width="100%" value={password} onChange={(value) => { setPassword(value); setError('') }} />
               {error && <Banner status="error" title={error} />}
-              <Button label="登录" type="submit" variant="primary" width="100%" isDisabled={!phone.trim()} />
+              <Button label="登录" type="submit" variant="primary" width="100%" isLoading={submitting} isDisabled={!phone.trim() || !password} />
             </VStack>
           </form>
         </Card>

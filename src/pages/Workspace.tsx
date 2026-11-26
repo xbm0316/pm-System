@@ -1,17 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Banner } from '@astryxdesign/core/Banner'
+import { Button } from '@astryxdesign/core/Button'
+import { HStack, VStack } from '@astryxdesign/core/Layout'
+import { Text } from '@astryxdesign/core/Text'
 import TopBar from '../components/TopBar'
 import ReqPool from '../components/ReqPool'
 import CompAnalysis from '../components/CompAnalysis'
 import RequirementDetailPage from '../components/RequirementDetailPage'
-import ProjectManagerBoard from '../components/ProjectManagerBoard'
-import OperationsWorkspace from '../components/OperationsWorkspace'
+import ProjectManagerBoard, { normalizeProjectStore } from '../components/ProjectManagerBoard'
+import OperationsWorkspace, { normalizeOperationsState, type OperationsState } from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
 import TodoWorkspace, { TodoDetailDialog } from '../components/TodoWorkspace'
-import { WorkspaceOverlay } from '../components/WorkspaceDialog'
-import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type Project, type ProjectTask, type ProjectIssue, type ProjectSummary } from '../lib/store'
+import WorkspaceDialog, { WorkspaceDialogActions, WorkspaceOverlay } from '../components/WorkspaceDialog'
+import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type ProjectStore } from '../lib/store'
 import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, updateCompetitor, deleteCompetitorRow, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
-import { useTodoReminders, useWorkspaceTodos } from '../lib/todos'
+import { normalizeTodos, useTodoReminders, workspaceTodoActions } from '../lib/todos'
+import { useWorkspaceSync } from '../lib/workspaceSync'
 
 const TODO_TAB = { key: 'todos', label: '待办事项', icon: 'check' }
 
@@ -46,34 +51,43 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const [reminderCount, setReminderCount] = useState(0)
   const [reminderItems, setReminderItems] = useState<{ id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string; projectId?: string }[]>([])
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
-  const [workspaceRevision, setWorkspaceRevision] = useState(0)
   const [summaryOpen, setSummaryOpen] = useState(false)
-  const [summaryProjects, setSummaryProjects] = useState<Project[]>([])
-  const [summaryTasks, setSummaryTasks] = useState<ProjectTask[]>([])
-  const [summaryIssues, setSummaryIssues] = useState<ProjectIssue[]>([])
-  const [summaryRecords, setSummaryRecords] = useState<ProjectSummary[]>([])
+  const [importOpen, setImportOpen] = useState(false)
+  const [productWriteError, setProductWriteError] = useState('')
+  const [productLoadError, setProductLoadError] = useState('')
+  const [productLoadAttempt, setProductLoadAttempt] = useState(0)
   const [activeMenu, setActiveMenu] = useState(isOperationsManager ? 'ops-knowledge' : isProductManager ? 'req' : 'proj')
   const [detailTarget, setDetailTarget] = useState<string | null>(null)
   const [addSignal, setAddSignal] = useState<Record<string, number>>({})
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [competitors, setCompetitors] = useState<Competitor[]>([])
-  const { todos, error: todoError, saveTodo, deleteTodo, completeTodo } = useWorkspaceTodos(ownerPhone, space.id)
+  const sync = useWorkspaceSync(ownerPhone, space.id)
+  const operationsRow = sync.rows?.operations
+  const projectRow = sync.rows?.projects
+  const todoRow = sync.rows?.todos
+  const operations = useMemo(() => normalizeOperationsState(operationsRow?.data), [operationsRow])
+  const projects = useMemo(() => normalizeProjectStore(projectRow?.data), [projectRow])
+  const todos = useMemo(() => normalizeTodos(todoRow?.data), [todoRow])
+  const { saveTodo, deleteTodo, completeTodo } = workspaceTodoActions((change) =>
+    sync.update('todos', todoRow?.revision, normalizeTodos, change)
+  )
+
+  function patchOperations(change: (state: OperationsState) => OperationsState) {
+    return sync.update('operations', operationsRow?.revision, normalizeOperationsState, change)
+  }
+
+  function patchProjects(change: (state: ProjectStore) => ProjectStore) {
+    return sync.update('projects', projectRow?.revision, normalizeProjectStore, change)
+  }
   const todoReminders = useTodoReminders(todos)
   const todoDetail = todos.find((item) => item.id === todoDetailId)
 
   useEffect(() => {
-    setActiveWorkspaceTab('workbench')
-    setActiveMenu(isOperationsManager ? 'ops-knowledge' : isProductManager ? 'req' : 'proj')
-    setDetailTarget(null)
-    setOpenTaskId(null)
-    setSearchQuery('')
-    setRequirements([])
-    setCompetitors([])
+    if (!isProductManager) return
     let cancelled = false
     void (async () => {
-      const fetchedRequirements = await fetchRequirements(space.id)
-      const rs = import.meta.env.DEV && isProductManager && fetchedRequirements.length === 0 ? previewRequirements(space.id) : fetchedRequirements
-      const cs = await fetchCompetitors(space.id)
+      const [fetchedRequirements, cs] = await Promise.all([fetchRequirements(space.id), fetchCompetitors(space.id)])
+      const rs = import.meta.env.DEV && fetchedRequirements.length === 0 ? previewRequirements(space.id) : fetchedRequirements
       const requirementsWithLocalFiles = await Promise.all(rs.map(async (requirement) => ({
         ...requirement,
         attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
@@ -85,9 +99,10 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
       if (cancelled) return
       setRequirements(requirementsWithLocalFiles)
       setCompetitors(competitorsWithLocalFiles)
-    })()
+      setProductLoadError('')
+    })().catch(() => { if (!cancelled) setProductLoadError('无法读取需求和竞品，请重试') })
     return () => { cancelled = true }
-  }, [ownerPhone, space.id, isOperationsManager, isProductManager])
+  }, [space.id, isProductManager, productLoadAttempt, sync.imported])
 
   useEffect(() => {
     if (!isProductManager) return
@@ -100,32 +115,11 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     setReminderItems(requirementsWithinDay)
   }, [isProductManager, requirements])
 
-  function loadSummaryData() {
-    try {
-      const raw = localStorage.getItem(`jawcat.project-manager.v4.${ownerPhone}.${space.id}`)
-      const parsed = raw ? JSON.parse(raw) as Partial<{ projects: Project[]; tasks: ProjectTask[]; issues: ProjectIssue[]; summaries: ProjectSummary[] }> : {}
-      setSummaryProjects(Array.isArray(parsed.projects) ? parsed.projects : [])
-      setSummaryTasks(Array.isArray(parsed.tasks) ? parsed.tasks : [])
-      setSummaryIssues(Array.isArray(parsed.issues) ? parsed.issues : [])
-      setSummaryRecords(Array.isArray(parsed.summaries) ? parsed.summaries : [])
-    } catch {
-      setSummaryProjects([]); setSummaryTasks([]); setSummaryIssues([]); setSummaryRecords([])
-    }
-  }
-  function openSummary() { loadSummaryData(); setSummaryOpen(true) }
-  function updateSummaryRecords(next: ProjectSummary[]) {
-    setSummaryRecords(next)
-    try {
-      const key = `jawcat.project-manager.v4.${ownerPhone}.${space.id}`
-      const raw = localStorage.getItem(key)
-      const parsed = raw ? JSON.parse(raw) : {}
-      localStorage.setItem(key, JSON.stringify({ ...parsed, summaries: next }))
-    } catch { /* local persistence is best effort */ }
-  }
-
   function updateReqStatus(reqId: string, status: RequirementStatus) {
-    setRequirements((prev) => prev.map((item) => item.id === reqId ? { ...item, status } : item))
-    void updateRequirementStatus(reqId, status)
+    void updateRequirementStatus(reqId, status).then(() => {
+      setRequirements((prev) => prev.map((item) => item.id === reqId ? { ...item, status } : item))
+      setProductWriteError('')
+    }).catch(() => setProductWriteError('无法同步需求状态，请重试'))
   }
 
   async function addRequirement(item: Requirement) {
@@ -195,7 +189,6 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     setActiveWorkspaceTab(key as WorkspaceTabKey)
     setDetailTarget(null)
     setOpenTaskId(null)
-    setWorkspaceRevision((value) => value + 1)
   }
 
   return <div className="workspace-frame">
@@ -212,8 +205,8 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
       reminderCount={isProductManager ? reminderItems.length : reminderCount}
       reminderItems={reminderItems}
       todoReminders={todoReminders}
-      todoReminderError={todoError}
-      onCompleteTodo={completeTodo}
+      todoReminderError={sync.writeError || sync.loadError}
+      onCompleteTodo={(id) => { void completeTodo(id) }}
       onOpenTodoDetails={setTodoDetailId}
       todoDetailsOpen={Boolean(todoDetail)}
       onReminderClick={(item) => {
@@ -224,33 +217,59 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
         } else if (item.taskId) {
           setActiveWorkspaceTab('workbench')
           setOpenTaskId(item.taskId)
-          setWorkspaceRevision((value) => value + 1)
         }
       }}
-      onSummaryClick={isProductManager || isOperationsManager ? undefined : openSummary}
+      onSummaryClick={!sync.rows || isProductManager || isOperationsManager ? undefined : () => setSummaryOpen(true)}
     />
     <div className={`main${isProductManager ? ' main--product' : ' main--project'}`}>
-      <section className={`${contentClass} workspace-module${knowledgeView ? ' content--knowledge' : ''}`} hidden={showTodos}>
-        {isOperationsManager ? <OperationsWorkspace key={space.id} ownerPhone={ownerPhone} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : (
-          <ProjectManagerBoard
-            key={space.id}
-            ownerPhone={ownerPhone}
-            spaceId={space.id}
-            searchQuery={searchQuery}
-            onRemindersChange={setReminderCount}
-            onReminders={setReminderItems}
-            onOpenTask={view !== 'board' ? (taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) } : undefined}
-            openTaskId={view === 'board' ? openTaskId : undefined}
-            onCloseTask={() => setOpenTaskId(null)}
-            view={view}
-          />
-        )}
-      </section>
-      {showTodos && <section className={`${contentClass} content--todos`}>
-        <TodoWorkspace todos={todos} searchQuery={searchQuery} error={todoError} onOpenDetails={setTodoDetailId} onSave={saveTodo} onDelete={deleteTodo} onComplete={completeTodo} />
-      </section>}
+      {!sync.rows && <VStack gap={2} padding={4}>
+        {sync.loadError ? <>
+          <Banner status="error" title={sync.loadError} />
+          <Button label="重试" variant="secondary" onClick={() => void sync.refresh()} />
+        </> : <Text role="status">正在读取账号数据…</Text>}
+      </VStack>}
+      {sync.rows && <>
+        {(sync.imported || sync.hasBrowserCopies) && <HStack padding={2} gap={2} hAlign="end" vAlign="center" wrap="wrap">
+          {sync.imported ? <Text type="supporting">旧数据导入完成</Text> : <Button label="导入此浏览器的旧数据" variant="ghost" size="sm" onClick={() => setImportOpen(true)} />}
+        </HStack>}
+        {productWriteError && <Banner status="error" title={productWriteError} />}
+        {productLoadError && <HStack padding={2} gap={2} wrap="wrap"><Banner status="error" title={productLoadError} /><Button label="重试" variant="secondary" onClick={() => setProductLoadAttempt((value) => value + 1)} /></HStack>}
+        {sync.writeError && !showTodos && <Banner status="error" title={sync.writeError} />}
+        <section className={`${contentClass} workspace-module${knowledgeView ? ' content--knowledge' : ''}`} hidden={showTodos}>
+          {isOperationsManager ? <OperationsWorkspace key={space.id} state={operations} updateState={patchOperations} spaceId={space.id} activeMenu={activeMenu} searchQuery={searchQuery} /> : isProductManager ? renderProductContent() : (
+            <ProjectManagerBoard
+              key={space.id}
+              store={projects}
+              patchStore={patchProjects}
+              spaceId={space.id}
+              searchQuery={searchQuery}
+              onRemindersChange={setReminderCount}
+              onReminders={setReminderItems}
+              onOpenTask={view !== 'board' ? (taskId) => { setActiveWorkspaceTab('workbench'); setOpenTaskId(taskId) } : undefined}
+              openTaskId={view === 'board' ? openTaskId : undefined}
+              onCloseTask={() => setOpenTaskId(null)}
+              view={view}
+            />
+          )}
+        </section>
+        {showTodos && <section className={`${contentClass} content--todos`}>
+          <TodoWorkspace todos={todos} searchQuery={searchQuery} error={sync.writeError} onOpenDetails={setTodoDetailId} onSave={saveTodo} onDelete={deleteTodo} onComplete={completeTodo} />
+        </section>}
+      </>}
     </div>
+    {importOpen && <WorkspaceDialog title="导入此浏览器的旧数据" onClose={() => !sync.importing && setImportOpen(false)}>
+      <VStack gap={3}>
+        <Text>请在平时使用、能看到完整旧数据的浏览器里导入。已有云端数据的模块会保留当前内容。</Text>
+        {sync.writeError && <Banner status="error" title={sync.writeError} />}
+        <WorkspaceDialogActions>
+          <Button label="取消" variant="ghost" isDisabled={sync.importing} onClick={() => setImportOpen(false)} />
+          <Button label="导入旧数据" variant="primary" isLoading={sync.importing} onClick={() => {
+            void sync.importFromBrowser().then((success) => { if (success) setImportOpen(false) })
+          }} />
+        </WorkspaceDialogActions>
+      </VStack>
+    </WorkspaceDialog>}
     {todoDetail && <TodoDetailDialog todo={todoDetail} onClose={() => setTodoDetailId(null)} />}
-    {summaryOpen && <SummaryWorkspace projects={summaryProjects} tasks={summaryTasks} issues={summaryIssues} summaries={summaryRecords} onChange={updateSummaryRecords} onClose={() => setSummaryOpen(false)} />}
+    {summaryOpen && <SummaryWorkspace projects={projects.projects} tasks={projects.tasks} issues={projects.issues} summaries={projects.summaries} onChange={(summaries) => patchProjects((current) => ({ ...current, summaries }))} onClose={() => setSummaryOpen(false)} />}
   </div>
 }

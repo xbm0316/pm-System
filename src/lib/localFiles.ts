@@ -1,3 +1,5 @@
+import { findCloudFile, listCloudFiles, readCloudFile, removeCloudFiles, uploadCloudFile, type CloudFile } from './cloudFiles'
+
 export interface LocalAttachment {
   id: string
   fileId: string
@@ -101,9 +103,21 @@ const FILE_STORE = 'files'
 const HANDLE_STORE = 'settings'
 const LOCAL_FILE_PREFIX = '/local-files/'
 let directoryPromise: Promise<DirectoryHandle> | null = null
+let accountPhone: string | null = null
+
+export function setLocalFileAccount(phone: string | null) {
+  if (phone === accountPhone) return
+  accountPhone = phone
+  directoryPromise = null
+}
 
 function currentOwnerPhone() {
-  try { return localStorage.getItem('ws.session.v1') || 'anonymous' } catch { return 'anonymous' }
+  if (!accountPhone) throw new Error('请先登录工作空间')
+  return accountPhone
+}
+
+function belongsToAccount(record: StoredFile, phone = accountPhone) {
+  return Boolean(phone && (record.ownerPhone === phone || (!record.ownerPhone && phone === '13610392041')))
 }
 
 function unsupportedError() {
@@ -191,8 +205,10 @@ async function idbAll() {
 type SavedDirectory = { key: string; handle: DirectoryHandle }
 
 async function restoreDirectoryHandle() {
-  const saved = await idbGet<SavedDirectory>(HANDLE_STORE, 'root')
-  if (saved?.handle && !directoryPromise) directoryPromise = Promise.resolve(saved.handle)
+  const phone = accountPhone
+  if (!phone || directoryPromise) return
+  const saved = await idbGet<SavedDirectory>(HANDLE_STORE, 'root:' + phone)
+  if (phone === accountPhone && saved?.handle && !directoryPromise) directoryPromise = Promise.resolve(saved.handle)
 }
 
 export async function getAttachmentDestinationName() {
@@ -200,22 +216,21 @@ export async function getAttachmentDestinationName() {
   return (await directoryPromise)?.name ?? ''
 }
 
-async function requestWriteAccess(handle: FileSystemHandle) {
+async function requestFileAccess(handle: FileSystemHandle, mode: 'read' | 'readwrite' = 'readwrite') {
   const writable = handle as FileSystemHandle & WritableHandle
-  const options = { mode: 'readwrite' } as const
+  const options = { mode }
   if (await writable.queryPermission(options) === 'granted') return
-  if (await writable.requestPermission(options) !== 'granted') throw new Error('未获得本地文件或文件夹写入权限')
+  if (await writable.requestPermission(options) !== 'granted') throw new Error(mode === 'read' ? '未获得文件读取权限' : '未获得本地文件或文件夹写入权限')
 }
 
 async function openDestinationPicker(previous?: DirectoryHandle) {
+  const phone = currentOwnerPhone()
   const picker = (window as DirectoryPickerWindow).showDirectoryPicker
   if (!picker) throw unsupportedError()
   const next = await picker({ mode: 'readwrite', id: 'attachment-destination', ...(previous ? { startIn: previous } : {}) })
-  await requestWriteAccess(next)
-  if (previous && !await previous.isSameEntry(next) && !await idbGet<SavedDirectory>(HANDLE_STORE, 'legacy-root')) {
-    await idbPut(HANDLE_STORE, { key: 'legacy-root', handle: previous } satisfies SavedDirectory)
-  }
-  await idbPut(HANDLE_STORE, { key: 'root', handle: next } satisfies SavedDirectory)
+  await requestFileAccess(next)
+  if (phone !== accountPhone) throw new Error('账号已切换，请重新选择本机目录')
+  await idbPut(HANDLE_STORE, { key: 'root:' + phone, handle: next } satisfies SavedDirectory)
   return next
 }
 
@@ -238,7 +253,7 @@ async function ensureDirectoryHandle() {
     })
   }
   const handle = await directoryPromise
-  await requestWriteAccess(handle)
+  await requestFileAccess(handle)
   return handle
 }
 
@@ -251,7 +266,8 @@ async function recordedDirectory(record: StoredFile) {
 
 export async function authorizeAttachmentDirectory(fileId?: string) {
   const record = fileId ? await idbGet<StoredFile>(FILE_STORE, fileId) : undefined
-  if (record?.storageBackend === 'browser' || (record && !record.storageBackend)) await requestWriteAccess(await recordedDirectory(record))
+  if (record && !belongsToAccount(record)) throw new Error('附件不属于当前账号')
+  if (record?.storageBackend === 'browser' || (record && !record.storageBackend)) await requestFileAccess(await recordedDirectory(record))
   else await ensureDirectoryHandle()
 }
 
@@ -319,11 +335,30 @@ async function helperRequest(path: string, init?: RequestInit) {
 
 export async function registerLocalFileServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  navigator.serviceWorker.addEventListener('message', serveAttachmentPreview)
   try {
     await navigator.serviceWorker.register('/local-files-sw.js', { scope: '/' })
     await navigator.serviceWorker.ready
     await restoreDirectoryHandle()
   } catch (error) { console.warn('local file service worker unavailable', error) }
+}
+
+function serveAttachmentPreview(event: MessageEvent) {
+  const port = event.ports[0]
+  if (event.data?.type !== 'workspace-file-preview' || typeof event.data.id !== 'string' || !port) return
+  const phone = accountPhone
+  void (async () => {
+    try {
+      if (!phone) throw new Error('请先登录')
+      const file = await readLocalAttachment(event.data.id)
+      if (phone !== accountPhone) throw new Error('账号已切换')
+      port.postMessage({ file, name: file instanceof File ? file.name : 'attachment' })
+    } catch {
+      port.postMessage(null)
+    } finally {
+      port.close()
+    }
+  })()
 }
 
 type AttachmentContext = { spaceId: string; entityType: string; entityId: string; fileName?: string; pathSegments?: string[] }
@@ -341,7 +376,14 @@ async function sameContents(a: Blob, b: Blob) {
 
 export async function uploadLocalFile(file: File | Blob, context: AttachmentContext): Promise<LocalAttachment> {
   if (file instanceof File && isAttachmentToMove(file)) throw new Error('请通过表单保存待移动文件')
-  return writeAttachment(file, context, await ensureDirectoryHandle())
+  const attachment = await writeAttachment(file, context, await ensureDirectoryHandle())
+  try {
+    await syncAttachment(attachment.fileId, file)
+    return attachment
+  } catch (error) {
+    await discardLocalFile(attachment.fileId).catch(() => undefined)
+    throw error
+  }
 }
 
 async function writeAttachment(file: File | Blob, context: AttachmentContext, root: DirectoryHandle, verify = false): Promise<LocalAttachment> {
@@ -406,7 +448,7 @@ export async function saveLocalAttachments(
     return source && !source.directory ? [source.handle] : []
   }))]
   // Confirm source permissions from the save gesture before staging any data.
-  for (const handle of sourceHandles) await requestWriteAccess(handle)
+  for (const handle of sourceHandles) await requestFileAccess(handle)
   const root = files.length > 0 ? await ensureDirectoryHandle() : undefined
   const staged: LocalAttachment[] = []
   const sources: Array<{ file: File; source: MoveSource; attachment: LocalAttachment }> = []
@@ -423,6 +465,7 @@ export async function saveLocalAttachments(
       try {
         const attachment = await writeAttachment(file, typeof context === 'function' ? context(file, index) : context, root!, Boolean(source))
         staged.push(attachment)
+        await syncAttachment(attachment.fileId, file)
         if (source) sources.push({ file, source, attachment })
       } catch (error) {
         throw new Error('「' + file.name + '」保存失败：' + (error instanceof Error ? error.message : '请重试'))
@@ -430,7 +473,10 @@ export async function saveLocalAttachments(
     }
     await persist(staged)
   } catch (error) {
-    await Promise.allSettled(staged.map((attachment) => deleteLocalFile(attachment.fileId)))
+    await Promise.allSettled(staged.flatMap(({ fileId }) => [
+      discardLocalFile(fileId),
+      findCloudFile(fileId).then((cloud) => cloud ? removeCloudFiles([cloud]) : undefined),
+    ]))
     throw error
   }
   const retained: string[] = []
@@ -454,14 +500,20 @@ export async function saveLocalAttachments(
 
 export async function deleteLocalFile(fileId?: string) {
   if (!fileId) return
+  const cloud = await findCloudFile(fileId)
+  await discardLocalFile(fileId)
+  if (cloud) await removeCloudFiles([cloud])
+}
+
+async function discardLocalFile(fileId: string) {
   const record = await idbGet<StoredFile>(FILE_STORE, fileId)
-  if (!record || (record.ownerPhone && record.ownerPhone !== currentOwnerPhone())) return
+  if (!record || !belongsToAccount(record)) return
   if (record.storageBackend === 'helper') {
     const result = await helperRequest('/delete-file?spaceId=' + encodeURIComponent(record.spaceId) + '&path=' + encodeURIComponent(record.relativePath), { method: 'POST' })
     if (!result) throw new Error('无法连接本地文件助手，请启动助手后重试')
   } else {
     const root = await recordedDirectory(record)
-    await requestWriteAccess(root)
+    await requestFileAccess(root)
     const remove = () => removeFile(root, record.relativePath)
     if (navigator.locks) await navigator.locks.request('pm-workspace-attachment-write', remove)
     else await remove()
@@ -470,9 +522,9 @@ export async function deleteLocalFile(fileId?: string) {
 }
 
 export async function listLocalFiles(entityType: string, entityId: string) {
-  const ownerPhone = currentOwnerPhone()
-  const records = (await idbAll()).filter((record) => record.entityType === entityType && record.entityId === entityId && (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041')))
-  return records.map((record) => ({ id: record.id, fileId: record.id, name: record.originalName, fileName: record.originalName, type: record.mimeType, mimeType: record.mimeType, size: record.size, kind: record.mimeType.startsWith('image/') ? 'image' as const : 'file' as const, url: localFileUrl(record.id), relativePath: record.relativePath, storageScope: record.spaceId, storageBackend: record.storageBackend || 'browser', createdAt: record.createdAt, updatedAt: record.createdAt }))
+  const cloud = await listCloudFiles({ entityType, entityId })
+  const local = new Map((await idbAll()).filter((record) => belongsToAccount(record)).map((record) => [record.id, record]))
+  return cloud.map((file) => attachmentMetadata(file, local.get(file.id)))
 }
 
 /** Read persisted metadata for one attachment. This is used to hydrate older
@@ -480,23 +532,69 @@ export async function listLocalFiles(entityType: string, entityId: string) {
  * refresh. */
 export async function getLocalFile(fileId?: string): Promise<LocalAttachment | null> {
   if (!fileId) return null
+  const cloud = await findCloudFile(fileId)
+  if (!cloud) return null
   const record = await idbGet<StoredFile>(FILE_STORE, fileId)
-  if (!record || (record.ownerPhone && record.ownerPhone !== currentOwnerPhone())) return null
+  return attachmentMetadata(cloud, record && belongsToAccount(record) ? record : undefined)
+}
+
+function attachmentMetadata(file: CloudFile, record?: StoredFile): LocalAttachment {
   return {
-    id: record.id,
-    fileId: record.id,
-    name: record.originalName,
-    fileName: record.originalName,
-    type: record.mimeType,
-    mimeType: record.mimeType,
-    size: record.size,
-    kind: record.mimeType.startsWith('image/') ? 'image' : 'file',
-    url: localFileUrl(record.id),
-    relativePath: record.relativePath,
-    storageScope: record.spaceId,
-    storageBackend: record.storageBackend || 'browser',
-    createdAt: record.createdAt,
-    updatedAt: record.createdAt,
+    id: file.id,
+    fileId: file.id,
+    name: file.original_name,
+    fileName: file.original_name,
+    type: file.mime_type,
+    mimeType: file.mime_type,
+    size: file.size,
+    kind: file.mime_type.startsWith('image/') ? 'image' : 'file',
+    url: localFileUrl(file.id),
+    relativePath: record?.relativePath,
+    storageScope: file.space_id,
+    storageBackend: record ? record.storageBackend || 'browser' : undefined,
+    createdAt: file.created_at,
+    updatedAt: file.created_at,
+  }
+}
+
+function canonicalFile(record: StoredFile): CloudFile {
+  return {
+    id: record.id, space_id: record.spaceId, entity_type: record.entityType,
+    entity_id: record.entityId, original_name: record.originalName,
+    mime_type: record.mimeType, size: record.size, created_at: record.createdAt,
+  }
+}
+
+async function syncAttachment(id: string, file: Blob) {
+  const record = await idbGet<StoredFile>(FILE_STORE, id)
+  if (!record || !belongsToAccount(record)) throw new Error('本机附件记录已失效')
+  return uploadCloudFile(canonicalFile(record), file)
+}
+
+export async function hasLegacyAttachments(spaceId: string) {
+  const local = (await idbAll()).filter((record) => record.spaceId === spaceId && belongsToAccount(record))
+  if (!local.length) return false
+  const cloudIds = new Set((await listCloudFiles({ spaceId })).map(({ id }) => id))
+  return local.some(({ id }) => !cloudIds.has(id))
+}
+
+export async function importLegacyAttachments(spaceId: string, include: (entityType: string) => boolean) {
+  const phone = currentOwnerPhone()
+  const records = (await idbAll()).filter((record) => record.spaceId === spaceId && belongsToAccount(record, phone) && include(record.entityType))
+  for (const record of records) {
+    if (phone !== accountPhone) throw new Error('账号已切换，导入已停止')
+    if (await findCloudFile(record.id)) continue
+    let file = record.blob
+    if (!file && record.handle) {
+      try {
+        await requestFileAccess(record.root ?? record.handle, 'read')
+      } catch {
+        throw new Error('请授权读取原附件目录后重试：「' + record.originalName + '」')
+      }
+      file = await record.handle.getFile().catch(() => undefined)
+    }
+    if (!file) throw new Error('无法读取本机附件「' + record.originalName + '」')
+    await uploadCloudFile(canonicalFile(record), file)
   }
 }
 
@@ -520,19 +618,21 @@ export async function openLocalFolder(relativePath?: string, storageScope?: stri
     } catch { /* helper is optional */ }
   }
   const record = fileId ? await idbGet<StoredFile>(FILE_STORE, fileId) : undefined
+  if (record && !belongsToAccount(record)) throw new Error('附件不属于当前账号')
   const root = record && record.storageBackend !== 'helper' ? await recordedDirectory(record) : await ensureDirectoryHandle()
-  await requestWriteAccess(root)
+  await requestFileAccess(root)
   await getNestedDirectory(root, path, false)
   return { path: relativeDirectory, native: false }
 }
 
 export async function deleteLocalFilesForEntities(entities: ReadonlyArray<{ type: string; id: string }>, spaceId?: string) {
-  const ownerPhone = currentOwnerPhone()
   const keys = new Set(entities.map(({ type, id }) => type + ':' + id))
   const records = (await idbAll()).filter((record) =>
-    (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041'))
+    belongsToAccount(record)
     && (!spaceId || record.spaceId === spaceId) && keys.has(record.entityType + ':' + record.entityId))
-  for (const { id } of records) await deleteLocalFile(id)
+  const cloud = (await listCloudFiles({ spaceId })).filter((file) => keys.has(file.entity_type + ':' + file.entity_id))
+  for (const { id } of records) await discardLocalFile(id)
+  await removeCloudFiles(cloud)
 }
 
 export async function deleteLocalFilesForEntity(entityType: string, entityId: string, spaceId?: string) {
@@ -540,17 +640,24 @@ export async function deleteLocalFilesForEntity(entityType: string, entityId: st
 }
 
 export async function deleteLocalFilesForSpace(spaceId: string) {
-  const ownerPhone = currentOwnerPhone()
-  const records = (await idbAll()).filter((record) => record.spaceId === spaceId && (record.ownerPhone === ownerPhone || (!record.ownerPhone && ownerPhone === '13610392041')))
-  for (const { id } of records) await deleteLocalFile(id)
+  const records = (await idbAll()).filter((record) => record.spaceId === spaceId && belongsToAccount(record))
+  const cloud = await listCloudFiles({ spaceId })
+  for (const { id } of records) await discardLocalFile(id)
+  await removeCloudFiles(cloud)
 }
 
 export async function readLocalAttachment(fileId: string) {
+  const phone = currentOwnerPhone()
+  const cloud = await findCloudFile(fileId)
+  if (!cloud || phone !== accountPhone) throw new Error('附件不可读取')
   const record = await idbGet<StoredFile>(FILE_STORE, fileId)
-  if (!record || (record.ownerPhone && record.ownerPhone !== currentOwnerPhone())) throw new Error('本地文件记录不存在')
-  const file = record.blob ?? await record.handle?.getFile()
-  if (!file) throw new Error('本地附件不可读取')
-  return file
+  if (record && belongsToAccount(record, phone)) {
+    const file = record.blob ?? await record.handle?.getFile().catch(() => undefined)
+    if (file && phone === accountPhone) return file
+  }
+  const blob = await readCloudFile(cloud)
+  if (phone !== accountPhone) throw new Error('账号已切换')
+  return new File([blob], cloud.original_name, { type: cloud.mime_type })
 }
 
 export async function fetchLocalBuffer(url: string) {

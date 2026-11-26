@@ -34,7 +34,8 @@ import FileAttachmentList from './FileAttachmentList'
 
 interface Props {
   spaceId: string
-  ownerPhone: string
+  store: ProjectStore
+  patchStore: (change: (current: ProjectStore) => ProjectStore) => Promise<void>
   searchQuery?: string
   onRemindersChange?: (count: number) => void
   onReminders?: (items: { id: string; kind: 'task' | 'issue'; title: string; dueDate: string; taskId: string; projectId: string }[]) => void
@@ -42,17 +43,6 @@ interface Props {
   onOpenTask?: (taskId: string) => void
   onCloseTask?: () => void
   view?: 'board' | 'retro' | 'knowledge' | 'meeting'
-}
-
-const STORAGE_PREFIX = 'jawcat.project-manager.v4.'
-const LEGACY_STORAGE_PREFIX = 'jawcat.project-manager.v3.'
-
-function clearLegacyProjectStorage() {
-  if (typeof window === 'undefined') return
-  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-    const key = localStorage.key(index)
-    if (key?.startsWith(LEGACY_STORAGE_PREFIX)) localStorage.removeItem(key)
-  }
 }
 
 function normalizeTaskStatus(status: unknown): TaskStatus {
@@ -67,26 +57,18 @@ function normalizeAttachment<T extends { id: string; fileId?: string; url?: stri
   return { ...attachment, fileId, url: fileId ? localFileUrl(fileId) : attachment.url } as T
 }
 
-function readStore(ownerPhone: string, spaceId: string): ProjectStore {
-  try {
-    const scopedKey = `${STORAGE_PREFIX}${ownerPhone}.${spaceId}`
-    const legacyKey = `${STORAGE_PREFIX}${spaceId}`
-    const raw = localStorage.getItem(scopedKey) || (ownerPhone === '13610392041' ? localStorage.getItem(legacyKey) : null)
-    if (!raw) return { projects: [], tasks: [], issues: [], retroTypes: [], retros: [], knowledgeTypes: [], knowledgeResources: [], meetings: [], summaries: [] }
-    const parsed = JSON.parse(raw) as Partial<ProjectStore>
-    return {
-      projects: Array.isArray(parsed.projects) ? parsed.projects.map((project) => ({ ...project, status: PROJECT_STATUSES.includes(project.status as ProjectStatus) ? project.status as ProjectStatus : '调研中', attachments: Array.isArray(project.attachments) ? project.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
-      tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map((task) => ({ ...task, status: normalizeTaskStatus(task.status), attachments: Array.isArray(task.attachments) ? task.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
-      issues: Array.isArray(parsed.issues) ? parsed.issues.map((issue) => ({ ...issue, status: (issue.status as string) === '已解决' ? '已处理' : issue.status || '待处理' })) : [],
-      retroTypes: Array.isArray(parsed.retroTypes) ? parsed.retroTypes : [],
-      retros: Array.isArray(parsed.retros) ? parsed.retros.map((retro) => ({ ...retro, attachments: Array.isArray(retro.attachments) ? retro.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
-      knowledgeTypes: Array.isArray(parsed.knowledgeTypes) ? parsed.knowledgeTypes : [],
-      knowledgeResources: Array.isArray(parsed.knowledgeResources) ? parsed.knowledgeResources.filter((resource) => !resource.dataUrl).map((resource) => ({ ...resource, fileUrl: resource.fileId ? localFileUrl(resource.fileId) : resource.fileUrl })) : [],
-      meetings: Array.isArray(parsed.meetings) ? parsed.meetings : [],
-      summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
-    }
-  } catch {
-    return { projects: [], tasks: [], issues: [], retroTypes: [], retros: [], knowledgeTypes: [], knowledgeResources: [], meetings: [], summaries: [] }
+export function normalizeProjectStore(value: unknown): ProjectStore {
+  const parsed = value && typeof value === 'object' ? value as Partial<ProjectStore> : {}
+  return {
+    projects: Array.isArray(parsed.projects) ? parsed.projects.map((project) => ({ ...project, status: PROJECT_STATUSES.includes(project.status as ProjectStatus) ? project.status as ProjectStatus : '调研中', attachments: Array.isArray(project.attachments) ? project.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
+    tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map((task) => ({ ...task, status: normalizeTaskStatus(task.status), attachments: Array.isArray(task.attachments) ? task.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
+    issues: Array.isArray(parsed.issues) ? parsed.issues.map((issue) => ({ ...issue, status: (issue.status as string) === '已解决' ? '已处理' : issue.status || '待处理' })) : [],
+    retroTypes: Array.isArray(parsed.retroTypes) ? parsed.retroTypes : [],
+    retros: Array.isArray(parsed.retros) ? parsed.retros.map((retro) => ({ ...retro, attachments: Array.isArray(retro.attachments) ? retro.attachments.filter((attachment) => !String(attachment.url || '').startsWith('data:')).map(normalizeAttachment) : undefined })) : [],
+    knowledgeTypes: Array.isArray(parsed.knowledgeTypes) ? parsed.knowledgeTypes : [],
+    knowledgeResources: Array.isArray(parsed.knowledgeResources) ? parsed.knowledgeResources.filter((resource) => !resource.dataUrl).map((resource) => ({ ...resource, fileUrl: resource.fileId ? localFileUrl(resource.fileId) : resource.fileUrl })) : [],
+    meetings: Array.isArray(parsed.meetings) ? parsed.meetings : [],
+    summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
   }
 }
 
@@ -98,11 +80,8 @@ function projectStatusClass(status: ProjectStatus) {
   return status === '调研中' ? 'research' : status === '已启动' ? 'reviewed' : status === '实施中' ? 'development' : status === '调试中' ? 'testing' : status === '验收中' ? 'reviewed' : status === '质保中' ? 'live' : 'complete'
 }
 
-export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery = '', onRemindersChange, onReminders, openTaskId, onOpenTask, onCloseTask, view = 'board' }: Props) {
-  useEffect(() => { clearLegacyProjectStorage() }, [])
-  const [store, setStore] = useState<ProjectStore>(() => readStore(ownerPhone, spaceId))
-  const storeRef = useRef(store)
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => readStore(ownerPhone, spaceId).projects.find((project) => !project.archivedAt)?.id || null)
+export default function ProjectManagerBoard({ store, patchStore, spaceId, searchQuery = '', onRemindersChange, onReminders, openTaskId, onOpenTask, onCloseTask, view = 'board' }: Props) {
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => store.projects.find((project) => !project.archivedAt)?.id || null)
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null)
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [projectParentId, setProjectParentId] = useState<string | undefined>()
@@ -187,20 +166,13 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
     onReminders?.(reminders)
   }, [onReminders, onRemindersChange, reminderCount, reminders])
 
-  function patchStore(updater: (current: ProjectStore) => ProjectStore) {
-    const next = updater(storeRef.current)
-    localStorage.setItem(STORAGE_PREFIX + ownerPhone + '.' + spaceId, JSON.stringify(next))
-    storeRef.current = next
-    setStore(next)
-  }
-
   async function createProject() {
     const name = projectName.trim()
     if (!name) return
     const project: Project = { id: uid(), spaceId, name, parentId: projectParentId, description: projectDescription.trim(), startDate: projectStartDate || undefined, endDate: projectEndDate || undefined, cost: projectCost.trim(), revenue: projectRevenue.trim(), profit: projectProfit.trim(), progress: 0, status: '调研中', createdAt: Date.now() }
     const saved = await projectAttachments.save({ spaceId, entityType: 'project', entityId: project.id, pathSegments: ['项目', name, '关联文件'] }, (attachments) => {
       const finalProject = attachments.length ? { ...project, attachments } : project
-      patchStore((current) => ({ ...current, projects: [...current.projects, finalProject] }))
+      return patchStore((current) => ({ ...current, projects: [...current.projects, finalProject] }))
     })
     if (!saved) return
     setActiveProjectId(project.id)
@@ -228,21 +200,21 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
     setProjectDetailEditing(true)
   }
 
-  function saveProjectEdit() {
+  async function saveProjectEdit() {
     if (!projectDetailTarget || !projectName.trim()) return
     const next = { ...projectDetailTarget, name: projectName.trim(), description: projectDescription.trim(), startDate: projectStartDate || undefined, endDate: projectEndDate || undefined, cost: projectCost.trim(), revenue: projectRevenue.trim(), profit: projectProfit.trim() }
-    patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === next.id ? next : project) }))
+    if (!await patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === next.id ? next : project) })).then(() => true, () => false)) return
     setProjectDetailTarget(next); setProjectDetailEditing(false); resetProjectForm()
   }
 
-  function archiveProject(project: Project) {
-    patchStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === project.id ? { ...item, archivedAt: Date.now() } : item) }))
+  async function archiveProject(project: Project) {
+    if (!await patchStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === project.id ? { ...item, archivedAt: Date.now() } : item) })).then(() => true, () => false)) return
     setDeleteTarget(null)
     if (activeProjectId === project.id) setDetailTaskId(null)
   }
 
-  function restoreProject(project: Project) {
-    patchStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === project.id ? { ...item, archivedAt: undefined } : item) }))
+  async function restoreProject(project: Project) {
+    if (!await patchStore((current) => ({ ...current, projects: current.projects.map((item) => item.id === project.id ? { ...item, archivedAt: undefined } : item) })).then(() => true, () => false)) return
     setActiveProjectId(project.id)
     setShowArchive(false)
   }
@@ -260,7 +232,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
     const taskId = uid()
     const saved = await taskAttachments.save({ spaceId, entityType: 'task', entityId: taskId, pathSegments: ['项目', activeProject.name, '任务', name] }, (attachments) => {
       const task: ProjectTask = { id: taskId, projectId: activeProject.id, name, content: taskContent.trim(), detail: taskDetail.trim(), startDate: taskStartDate, endDate: taskEndDate, priority: taskPriority, status: '调研中', progress: 0, createdAt: Date.now(), attachments }
-      patchStore((current) => ({ ...current, tasks: [...current.tasks, task] }))
+      return patchStore((current) => ({ ...current, tasks: [...current.tasks, task] }))
     })
     if (!saved) return
     setTaskName(''); setTaskContent(''); setTaskDetail(''); setTaskStartDate(''); setTaskEndDate(''); setTaskPriority('P1'); setTaskFormError(''); setShowCreateTask(false)
@@ -274,7 +246,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
 
   async function deleteTask(task: ProjectTask) {
     await deleteLocalFilesForEntity('task', task.id, spaceId)
-    patchStore((current) => ({
+    await patchStore((current) => ({
       ...current,
       tasks: current.tasks.filter((item) => item.id !== task.id),
       issues: current.issues.filter((issue) => issue.taskId !== task.id),
@@ -284,7 +256,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
   }
 
   async function deleteArchivedProject(project: Project) {
-    const projects = storeRef.current.projects
+    const projects = store.projects
     const removedProjects = new Set<string>([project.id])
     let size = 0
     while (removedProjects.size !== size) {
@@ -293,12 +265,12 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
         if (item.parentId && removedProjects.has(item.parentId)) removedProjects.add(item.id)
       }
     }
-    const removedTasks = new Set(storeRef.current.tasks.filter((task) => removedProjects.has(task.projectId)).map((task) => task.id))
+    const removedTasks = new Set(store.tasks.filter((task) => removedProjects.has(task.projectId)).map((task) => task.id))
     await deleteLocalFilesForEntities([
       ...Array.from(removedProjects, (id) => ({ type: 'project', id })),
       ...Array.from(removedTasks, (id) => ({ type: 'task', id })),
     ], spaceId)
-    patchStore((current) => ({
+    await patchStore((current) => ({
       ...current,
       projects: current.projects.filter((item) => !removedProjects.has(item.id)),
       tasks: current.tasks.filter((item) => !removedTasks.has(item.id)),
@@ -310,44 +282,44 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
   }
 
   function updateTaskStatus(taskId: string, status: TaskStatus) {
-    patchStore((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, status, updatedAt: Date.now() } : task) }))
+    return patchStore((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, status, updatedAt: Date.now() } : task) }))
   }
 
   function updateTask(taskId: string, patch: Partial<ProjectTask>) {
-    patchStore((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, ...patch } : task) }))
+    return patchStore((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === taskId ? { ...task, ...patch } : task) }))
   }
 
   function addIssue(issue: ProjectIssue) {
-    patchStore((current) => ({ ...current, issues: [...current.issues, issue] }))
+    return patchStore((current) => ({ ...current, issues: [...current.issues, issue] }))
   }
 
   function updateIssue(issueId: string, patch: Partial<ProjectIssue>) {
-    patchStore((current) => ({ ...current, issues: current.issues.map((issue) => issue.id === issueId ? { ...issue, ...patch, updatedAt: Date.now() } : issue) }))
+    return patchStore((current) => ({ ...current, issues: current.issues.map((issue) => issue.id === issueId ? { ...issue, ...patch, updatedAt: Date.now() } : issue) }))
   }
 
-  function updateProjectStatus(status: ProjectStatus) {
+  async function updateProjectStatus(status: ProjectStatus) {
     if (!activeProject) return
-    patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === activeProject.id ? { ...project, status } : project) }))
+    if (!await patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === activeProject.id ? { ...project, status } : project) })).then(() => true, () => false)) return
     setShowProjectStatus(false)
   }
 
-  function updateProjectProgress(value: string) {
+  async function updateProjectProgress(value: string) {
     if (!activeProject) return
     const progress = Math.min(100, Math.max(0, Number(value) || 0))
+    if (!await patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === activeProject.id ? { ...project, progress } : project) })).then(() => true, () => false)) return
     setProjectProgress(progress)
-    patchStore((current) => ({ ...current, projects: current.projects.map((project) => project.id === activeProject.id ? { ...project, progress } : project) }))
   }
 
   function updateRetroStore(types: ProjectStore['retroTypes'], retros: ProjectStore['retros']) {
-    patchStore((current) => ({ ...current, retroTypes: types, retros }))
+    return patchStore((current) => ({ ...current, retroTypes: types, retros }))
   }
 
   function updateKnowledgeStore(types: ProjectStore['knowledgeTypes'], resources: ProjectStore['knowledgeResources']) {
-    patchStore((current) => ({ ...current, knowledgeTypes: types, knowledgeResources: resources }))
+    return patchStore((current) => ({ ...current, knowledgeTypes: types, knowledgeResources: resources }))
   }
 
   function updateMeetings(meetings: ProjectStore['meetings']) {
-    patchStore((current) => ({ ...current, meetings }))
+    return patchStore((current) => ({ ...current, meetings }))
   }
 
   if (activeTask) {
@@ -416,7 +388,7 @@ export default function ProjectManagerBoard({ ownerPhone, spaceId, searchQuery =
         <div className="project-manager__empty"><EmptyState title="还没有项目" description="先新增一个项目，再添加需要跟踪的任务。" icon={<Icon name="grid" size={24} />} /></div>
       ) : (
         <div className="project-manager__body">
-          <div className="project-manager__project-title"><div><div className="project-manager__eyebrow">当前项目</div><div className="project-manager__project-name-row"><button type="button" className="project-manager__project-name-button" onClick={() => openProjectDetail(activeProject)} title="查看项目详情">{activeProject.name}</button><button type="button" className={`project-status-badge project-status-badge--${projectStatusClass(activeProject.status)}`} onClick={() => setShowProjectStatus(true)} title="修改项目状态">{activeProject.status}<Icon name="chevronDown" size={12} /></button></div></div><Button label="新增任务" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => { setTaskFormError(''); taskAttachments.reset(); setShowCreateTask(true) }} className="project-manager__task-add" /></div>
+          <div className="project-manager__project-title"><div><div className="project-manager__eyebrow">当前项目</div><div className="project-manager__project-name-row"><button type="button" className="project-manager__project-name-button" onClick={() => void openProjectDetail(activeProject)} title="查看项目详情">{activeProject.name}</button><button type="button" className={`project-status-badge project-status-badge--${projectStatusClass(activeProject.status)}`} onClick={() => setShowProjectStatus(true)} title="修改项目状态">{activeProject.status}<Icon name="chevronDown" size={12} /></button></div></div><Button label="新增任务" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => { setTaskFormError(''); taskAttachments.reset(); setShowCreateTask(true) }} className="project-manager__task-add" /></div>
           <div className="status-groups-shell project-task-groups-shell">
             <div className="status-groups project-task-groups">
               {TASK_STATUSES.map((status) => {

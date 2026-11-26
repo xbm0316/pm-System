@@ -274,19 +274,6 @@ export const MENUS: Record<TypeName, MenuDef[]> = {
   ],
 }
 
-const SESSION_KEY = 'ws.session.v1'
-
-export const ALLOWED_PHONES = ['15913504623', '13610392041']
-
-export function loadSession(): string | null {
-  return localStorage.getItem(SESSION_KEY)
-}
-
-export function saveSession(phone: string | null) {
-  if (phone) localStorage.setItem(SESSION_KEY, phone)
-  else localStorage.removeItem(SESSION_KEY)
-}
-
 export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }

@@ -25,7 +25,7 @@ interface Props {
   spaceId: string
   types: WorkspaceCollectionType[]
   retros: WorkspaceRetro[]
-  onChange: (types: WorkspaceCollectionType[], retros: WorkspaceRetro[]) => void
+  onChange: (types: WorkspaceCollectionType[], retros: WorkspaceRetro[]) => Promise<void>
   searchQuery?: string
 }
 
@@ -49,10 +49,10 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
   const cardsByType = useMemo(() => new Map(types.map((type) => [type.id, retros.filter((item) => item.typeId === type.id).filter((item) => !query || `${item.title} ${richTextPlainText(item.content)}`.toLocaleLowerCase().includes(query)).sort((a, b) => b.createdAt - a.createdAt)])), [query, retros, types])
 
   function openCreateRetro(typeId: string) { setSelectedTypeId(typeId); setTitle(''); setContent(''); attachmentDraft.reset(); setError(''); setShowCreateRetro(true) }
-  function addType() {
+  async function addType() {
     const name = typeName.trim()
     if (!name) return setError('请输入类型名称')
-    onChange([...types, { id: `retro-${Date.now().toString(36)}`, spaceId, name, createdAt: Date.now() }], retros)
+    try { await onChange([...types, { id: `retro-${Date.now().toString(36)}`, spaceId, name, createdAt: Date.now() }], retros) } catch { return setError("无法保存类型，请重试") }
     setTypeName(''); setError(''); setShowCreateType(false)
   }
   async function addRetro() {
@@ -62,7 +62,7 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
     const id = `retro-${now.toString(36)}`
     const typeName = types.find((type) => type.id === selectedTypeId)?.name || selectedTypeId
     const saved = await attachmentDraft.save({ spaceId, entityType: 'retro', entityId: id, pathSegments: ['复盘', typeName] }, (attachments) => {
-      onChange(types, [{ id, spaceId, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, createdAt: now, updatedAt: now }, ...retros])
+      return onChange(types, [{ id, spaceId, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, createdAt: now, updatedAt: now }, ...retros])
     })
     if (saved) setShowCreateRetro(false)
   }
@@ -74,29 +74,29 @@ export default function RetroWorkspace({ spaceId, types, retros, onChange, searc
     const typeName = types.find((type) => type.id === selectedTypeId)?.name || selectedTypeId
     const saved = await attachmentDraft.save({ spaceId, entityType: 'retro', entityId: editing.id, pathSegments: ['复盘', typeName] }, (added) => {
       const attachments = [...(editing.attachments || []), ...added]
-      onChange(types, retros.map((item) => item.id === editing.id ? { ...item, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, updatedAt: now } : item))
+      return onChange(types, retros.map((item) => item.id === editing.id ? { ...item, typeId: selectedTypeId, title: title.trim(), content: content.trim(), attachments, updatedAt: now } : item))
     })
     if (saved) setEditing(null)
   }
-  async function removeAttachment(item: WorkspaceRetro, attachment: ProjectTaskAttachment) { await deleteLocalFile(attachment.fileId || attachment.id); const next = { ...item, attachments: (item.attachments || []).filter((entry) => entry.id !== attachment.id), updatedAt: Date.now() }; onChange(types, retros.map((entry) => entry.id === item.id ? next : entry)); setDetail(next) }
+  async function removeAttachment(item: WorkspaceRetro, attachment: ProjectTaskAttachment) { await deleteLocalFile(attachment.fileId || attachment.id); const next = { ...item, attachments: (item.attachments || []).filter((entry) => entry.id !== attachment.id), updatedAt: Date.now() }; await onChange(types, retros.map((entry) => entry.id === item.id ? next : entry)); setDetail(next) }
   async function removeType() {
     if (!deleteType) return
     const removing = retros.filter((item) => item.typeId === deleteType.id)
     await deleteLocalFilesForEntities(removing.map((item) => ({ type: 'retro', id: item.id })), spaceId)
-    onChange(types.filter((type) => type.id !== deleteType.id), retros.filter((item) => item.typeId !== deleteType.id))
+    await onChange(types.filter((type) => type.id !== deleteType.id), retros.filter((item) => item.typeId !== deleteType.id))
   }
 
   async function removeRetro() {
     if (!deleteRetro) return
     await deleteLocalFilesForEntity('retro', deleteRetro.id, spaceId)
-    onChange(types, retros.filter((item) => item.id !== deleteRetro.id))
+    await onChange(types, retros.filter((item) => item.id !== deleteRetro.id))
     if (detail?.id === deleteRetro.id) setDetail(null)
   }
 
   function moveType(targetId: string) {
     if (!draggedTypeId || draggedTypeId === targetId) return
     const from = types.findIndex((type) => type.id === draggedTypeId); const to = types.findIndex((type) => type.id === targetId); if (from < 0 || to < 0) return
-    const next = [...types]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); onChange(next, retros); setDraggedTypeId(null)
+    const next = [...types]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); void onChange(next, retros).catch(() => undefined); setDraggedTypeId(null)
   }
 
   return <div className="collection-page collection-page--board"><Layout height="fill" header={<LayoutHeader padding={2}><div className="collection-board-toolbar"><div className="collection-board-title">复盘记录</div><Button label="新增类型" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={() => { setError(''); setShowCreateType(true) }} /></div></LayoutHeader>} content={<LayoutContent padding={0}><div className="collection-board-scroll">

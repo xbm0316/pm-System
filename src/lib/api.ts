@@ -45,17 +45,9 @@ function toRetro(r: any): Retro {
 
 // ---------- 空间 ----------
 
-export async function fetchSpaces(ownerPhone: string): Promise<Space[]> {
-  const { data, error } = await supabase.from('spaces').select('*').eq('owner_phone', ownerPhone).order('created_at')
-  if (error) {
-    // 迁移 SQL 尚未执行时，兼容旧库：已有数据暂归 136；159 不读取旧数据。
-    if (ownerPhone === '13610392041') {
-      const legacy = await supabase.from('spaces').select('*').order('created_at')
-      if (!legacy.error) return (legacy.data || []).map(toSpace)
-    }
-    console.error('fetchSpaces', error)
-    return []
-  }
+export async function fetchSpaces(): Promise<Space[]> {
+  const { data, error } = await supabase.from('spaces').select('*').order('created_at')
+  if (error) throw new Error(error.message)
   return (data || []).map(toSpace)
 }
 
@@ -63,31 +55,20 @@ export async function insertSpace(s: Space, ownerPhone: string) {
   const { error } = await supabase.from('spaces').insert({
     id: s.id, name: s.name, types: s.types, owner_phone: ownerPhone, created_at: s.createdAt,
   })
-  if (error) console.error('insertSpace', error)
+  if (error) throw new Error(error.message)
 }
 
-export async function updateSpaceName(id: string, name: string, ownerPhone: string) {
-  const { error } = await supabase.from('spaces').update({ name }).eq('id', id).eq('owner_phone', ownerPhone)
-  if (error && ownerPhone === '13610392041') {
-    const legacy = await supabase.from('spaces').update({ name }).eq('id', id)
-    if (legacy.error) console.error('updateSpaceName', legacy.error)
-  } else if (error) console.error('updateSpaceName', error)
+export async function updateSpaceName(id: string, name: string) {
+  const { error } = await supabase.from('spaces').update({ name }).eq('id', id).select('id').single()
+  if (error) throw new Error(error.message)
 }
 
-export async function deleteSpaceRow(id: string, ownerPhone: string) {
-  const { data: ownedSpace, error: lookupError } = await supabase.from('spaces').select('id').eq('id', id).eq('owner_phone', ownerPhone).maybeSingle()
-  if (lookupError) {
-    if (ownerPhone !== '13610392041') {
-      throw new Error(lookupError.message)
-    }
-    await removeSpaceContents(id)
-    const legacy = await supabase.from('spaces').delete().eq('id', id)
-    if (legacy.error) throw new Error(legacy.error.message)
-    return
-  }
+export async function deleteSpaceRow(id: string) {
+  const { data: ownedSpace, error: lookupError } = await supabase.from('spaces').select('id').eq('id', id).maybeSingle()
+  if (lookupError) throw new Error(lookupError.message)
   if (!ownedSpace) return
   await removeSpaceContents(id)
-  const { error } = await supabase.from('spaces').delete().eq('id', id).eq('owner_phone', ownerPhone)
+  const { error } = await supabase.from('spaces').delete().eq('id', id)
   if (error) throw new Error(error.message)
 }
 
@@ -104,7 +85,7 @@ export async function fetchRequirements(spaceId?: string): Promise<Requirement[]
   let query = supabase.from('requirements').select('*').order('created_at')
   if (spaceId) query = query.eq('space_id', spaceId)
   const { data, error } = await query
-  if (error) { console.error('fetchRequirements', error); return [] }
+  if (error) throw new Error(error.message)
   return (data || []).map(toReq)
 }
 
@@ -132,7 +113,7 @@ export async function updateRequirementAttachments(id: string, attachments: Requ
 
 export async function updateRequirementStatus(id: string, status: RequirementStatus) {
   const { error } = await supabase.from('requirements').update({ status }).eq('id', id)
-  if (error) console.error('updateRequirementStatus', error)
+  if (error) throw new Error(error.message)
 }
 
 export async function updateRequirement(id: string, patch: Partial<Requirement>) {
@@ -176,7 +157,7 @@ export async function fetchCompetitors(spaceId?: string): Promise<Competitor[]> 
   let query = supabase.from('competitors').select('*').order('created_at')
   if (spaceId) query = query.eq('space_id', spaceId)
   const { data, error } = await query
-  if (error) { console.error('fetchCompetitors', error); return [] }
+  if (error) throw new Error(error.message)
   return (data || []).map(toComp)
 }
 
