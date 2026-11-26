@@ -1,9 +1,8 @@
 import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
-import { HStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { useRef, useState } from 'react'
-import WorkspaceDialog from './WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from './WorkspaceDialog'
 
 export default function ConfirmDataDeletion({ title, onClose, onDelete }: {
   title: string
@@ -34,10 +33,10 @@ export default function ConfirmDataDeletion({ title, onClose, onDelete }: {
     <div className="app-dialog-form">
       <Text>会删除所有文件以及数据，确认删除吗？</Text>
       {error && <Banner status="error" title={<>{error}</>} />}
-      <HStack gap={2} hAlign="end">
+      <WorkspaceDialogActions>
         <Button label="取消" type="button" variant="secondary" isDisabled={deleting} onClick={onClose} />
         <Button label="确认删除" type="button" variant="destructive" isLoading={deleting} onClick={() => void confirm()} />
-      </HStack>
+      </WorkspaceDialogActions>
     </div>
   </WorkspaceDialog>
 }

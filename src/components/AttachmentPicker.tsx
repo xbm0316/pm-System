@@ -2,12 +2,11 @@ import { Banner } from '@astryxdesign/core/Banner'
 import { Button } from '@astryxdesign/core/Button'
 import { CheckboxInput } from '@astryxdesign/core/CheckboxInput'
 import { IconButton } from '@astryxdesign/core/IconButton'
-import { HStack } from '@astryxdesign/core/Layout'
 import { Text } from '@astryxdesign/core/Text'
 import { useEffect, useState, type ClipboardEvent } from 'react'
 import { chooseAttachmentDestination, getAttachmentDestinationName, isAttachmentToMove, pickAttachmentSource, pickFilesToMove, supportsAttachmentMoves, supportsDirectFileSelection } from '../lib/localFiles'
 import Icon from './Icon'
-import WorkspaceDialog from './WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from './WorkspaceDialog'
 
 interface Props {
   label: string
@@ -144,10 +143,10 @@ export default function AttachmentPicker({ label, onFiles, files, onRemove, acce
             : <Text>此文件夹没有可选文件</Text>}
         </div>
         {messageBanner}
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" type="button" variant="ghost" isDisabled={choosing} onClick={() => { setSource(null); setMessage('') }} />
           <Button label="加入待移动附件" type="button" variant="primary" isDisabled={!selected.length || choosing} onClick={() => void queueSelected()} />
-        </HStack>
+        </WorkspaceDialogActions>
       </div>
     </WorkspaceDialog>}
   </div>

@@ -1,20 +1,28 @@
-import { LayoutContent } from '@astryxdesign/core/Layout'
 import { NumberInput } from '@astryxdesign/core/NumberInput'
 import DatePicker from './DatePicker'
 import ConfirmDataDeletion from './ConfirmDataDeletion'
 import AttachmentPicker from './AttachmentPicker'
 import { Tab, TabList } from '@astryxdesign/core/TabList'
-import WorkspaceDialog from './WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from './WorkspaceDialog'
 import { IconButton } from '@astryxdesign/core/IconButton'
 import { ClickableCard } from '@astryxdesign/core/ClickableCard'
 import { TextInput } from '@astryxdesign/core/TextInput'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { Button } from '@astryxdesign/core/Button'
 import { Selector } from '@astryxdesign/core/Selector'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Carousel } from '@astryxdesign/core/Carousel'
+import { Card } from '@astryxdesign/core/Card'
+import { EmptyState } from '@astryxdesign/core/EmptyState'
+import { useHoverCard } from '@astryxdesign/core/HoverCard'
+import { Link } from '@astryxdesign/core/Link'
+import { useSnapPaging } from '@astryxdesign/core/SnapPaging'
+import { pixel, proportional, Table, useTableStickyColumns, type TableColumn } from '@astryxdesign/core/Table'
+import { Thumbnail } from '@astryxdesign/core/Thumbnail'
+import { Tooltip } from '@astryxdesign/core/Tooltip'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Banner } from '@astryxdesign/core/Banner'
 import { useAttachmentDraft } from '../lib/useAttachmentDraft'
-import type { FormEvent, ReactNode } from 'react'
+import type { CSSProperties, FormEvent, ReactNode } from 'react'
 import Icon from './Icon'
 import OperationsKnowledgeBoard, { type TutorialCard, type TutorialType } from './OperationsKnowledgeBoard'
 import { MENUS, uid } from '../lib/store'
@@ -23,9 +31,37 @@ import FileAttachmentList from './FileAttachmentList'
 
 interface OperationsWorkspaceProps { spaceId: string; ownerPhone: string; activeMenu: string; searchQuery?: string }
 type ProductConclusion = '继续研究' | '进入测试' | '准备上架' | '作为备选' | '暂停'
+type ProductCurrency = 'CNY' | 'USD'
 type CampaignStatus = '准备中' | '测试中' | '放量中' | '暂停'
 type ReviewDecision = '继续' | '调整' | '暂停'
-interface OpsProduct { id: string; name: string; description?: string; sku?: string; inventory?: number; image: string; images?: string[]; imageFileIds?: string[]; imagePaths?: string[]; supplier: string; cost: number; price: number; shipping: number; paymentFee: number; adCost: number; refundReserve: number; evidence: string; competition: string; fulfillment: string; materials: string; conclusion: ProductConclusion; attachments: string[]; createdAt: number }
+type OpsProduct = {
+  id: string
+  name: string
+  description?: string
+  sku?: string
+  inventory?: number
+  rank?: number | null
+  clicks?: number | null
+  image: string
+  images?: string[]
+  imageFileIds?: string[]
+  imagePaths?: string[]
+  supplier: string
+  currency?: ProductCurrency
+  cost: number
+  price: number
+  shipping: number
+  paymentFee: number
+  adCost: number
+  refundReserve: number
+  evidence: string
+  competition: string
+  fulfillment: string
+  materials: string
+  conclusion?: ProductConclusion
+  attachments: string[]
+  createdAt: number
+}
 interface OpsCampaign { id: string; name: string; platform: string; productId: string; landingPage: string; dailyBudget: number; totalBudget: number; spend: number; orders: number; revenue: number; status: CampaignStatus; notes: string; createdAt: number }
 interface OpsReview { id: string; title: string; date: string; scope: string; completed: string; problems: string; insight: string; decision: ReviewDecision; nextAction: string; attachments: LocalAttachment[]; createdAt: number }
 interface OperationsState { tutorialCards: TutorialCard[]; products: OpsProduct[]; campaigns: OpsCampaign[]; reviews: OpsReview[]; knowledgeTypes?: TutorialType[] }
@@ -73,10 +109,125 @@ function initialCards(): TutorialCard[] { const now = Date.now(); return tutoria
 function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
 function readState(ownerPhone: string, spaceId: string): OperationsState { try { const raw = localStorage.getItem(`${STORAGE_PREFIX}${ownerPhone}.${spaceId}`); if (!raw) return initialState(); const parsed = JSON.parse(raw) as Partial<OperationsState>; return { tutorialCards: Array.isArray(parsed.tutorialCards) && parsed.tutorialCards.length ? parsed.tutorialCards : initialCards(), products: Array.isArray(parsed.products) ? parsed.products.map((item) => ({ ...item, images: Array.isArray(item.images) ? item.images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) : (item.image ? [item.image] : []) })) : [], campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [], reviews: Array.isArray(parsed.reviews) ? parsed.reviews.map((item) => ({ ...item, attachments: Array.isArray(item.attachments) ? item.attachments.filter((entry): entry is LocalAttachment => Boolean(entry && typeof entry === 'object' && (entry as LocalAttachment).id)).map((entry) => ({ ...entry, url: entry.fileId ? localFileUrl(entry.fileId) : entry.url })) : [] })) : [], knowledgeTypes: Array.isArray(parsed.knowledgeTypes) && parsed.knowledgeTypes.length ? parsed.knowledgeTypes : tutorialTypes } } catch { return initialState() } }
 function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
+function productMoney(value: number, currency: ProductCurrency = 'CNY') {
+  return (currency === 'USD' ? 'US$' : '¥') + money(value)
+}
+const productNumberFormat = new Intl.NumberFormat('zh-CN')
+const GALLERY_PAGE_SIZE = 3
+
+function getSupplierLink(value?: string) {
+  const text = value?.trim()
+  if (!text) return undefined
+  try {
+    const url = new URL(text)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function ProductTitle({ title, supplier }: { title: string; supplier: string }) {
+  const href = getSupplierLink(supplier)
+  const characters = Array.from(title)
+  const preview = characters.length > 20 ? characters.slice(0, 20).join('') + '…' : title
+  if (href) {
+    return <Link className="operations-product-title" href={href} label={title} tooltip={title} target="_blank" rel="noreferrer" type="inherit">{preview}</Link>
+  }
+  return (
+    <Tooltip content={<span className="operations-product-title-tooltip">{title}</span>} focusTrigger="always" touchTrigger="tap">
+      <span className="operations-product-title" tabIndex={0}>{preview}</span>
+    </Tooltip>
+  )
+}
+
+function getProductImages(product: OpsProduct) {
+  return product.images?.length ? product.images : product.image ? [product.image] : []
+}
+
+function ProductGalleryImage({ src, alt, maxHeight }: { src: string; alt: string; maxHeight?: number }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <div className="operations-product-gallery__slide" style={{ maxBlockSize: maxHeight }}>
+      {failed ? <span>图片无法加载</span> : <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} />}
+    </div>
+  )
+}
+
+function ProductThumbnail({ product }: { product: OpsProduct }) {
+  const images = getProductImages(product).filter(Boolean)
+  const visibleImages = Math.min(images.length, GALLERY_PAGE_SIZE)
+  const pageCount = Math.ceil(images.length / GALLERY_PAGE_SIZE)
+  const paging = useSnapPaging()
+  const label = `${product.name}图片预览`
+  const trigger = useRef<HTMLButtonElement>(null)
+  const [maxHeight, setMaxHeight] = useState<number>()
+  const [failedSource, setFailedSource] = useState<string>()
+  const sizePreview = useCallback(() => {
+    const available = Math.floor(trigger.current?.getBoundingClientRect().top ?? 0) - 48
+    // Use the space above the thumbnail if the resulting preview is still legible.
+    setMaxHeight(available >= 100 ? available : undefined)
+  }, [])
+  const gallery = useHoverCard({ label, placement: 'above', alignment: 'start', touchTrigger: 'tap', onShow: sizePreview })
+  const attachTrigger = useCallback((element: HTMLButtonElement | null) => {
+    trigger.current = element
+    gallery.ref(element)
+  }, [gallery.ref])
+
+  const mainImage = images[0]
+  if (!mainImage) return <Thumbnail className="operations-product-thumbnail" aria-label="暂无商品图片" />
+
+  return (
+    <>
+      <IconButton
+        ref={attachTrigger}
+        className="operations-product-thumbnail"
+        label={`预览 ${product.name} 图片`}
+        variant="ghost"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={gallery.isOpen}
+        aria-controls={gallery.isOpen ? gallery.id : undefined}
+        onClick={(event) => { if (event.detail === 0) gallery.show() }}
+        icon={failedSource === mainImage
+          ? <Icon name="image" size={20} />
+          : <img src={mainImage} alt="" loading="lazy" onError={() => setFailedSource(mainImage)} />}
+      />
+      {gallery.renderHoverCard(
+        <Carousel
+          aria-label={label}
+          className="operations-product-gallery"
+          style={{ '--product-gallery-visible-images': visibleImages } as CSSProperties}
+          gap={2}
+          hasSnap={paging}
+          hasButtons={pageCount > 1}
+          hasLoop
+          hasEdgeFade={false}
+        >
+          {Array.from({ length: pageCount }, (_, page) => {
+            const firstImage = page * GALLERY_PAGE_SIZE
+            return (
+              <div key={firstImage} className="operations-product-gallery__page">
+                {images.slice(firstImage, firstImage + GALLERY_PAGE_SIZE).map((src, index) => (
+                  <ProductGalleryImage
+                    key={`${src}-${index}`}
+                    src={src}
+                    alt={`${product.name} · 第 ${firstImage + index + 1} 张图片`}
+                    maxHeight={maxHeight}
+                  />
+                ))}
+              </div>
+            )
+          })}
+        </Carousel>,
+      )}
+    </>
+  )
+}
+
 function OpsModal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <WorkspaceDialog title={title} onClose={onClose} purpose="info" width={760}>
-      <LayoutContent label={title}>{children}</LayoutContent>
+      {children}
     </WorkspaceDialog>
   )
 }
@@ -132,8 +283,8 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
   const [campaignDraft, setCampaignDraft] = useState<OpsCampaign | null>(null)
   const [reviewDraft, setReviewDraft] = useState<OpsReview | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'campaign' | 'ops-review'; id: string; name: string } | null>(null)
-  const [productImageIndexes, setProductImageIndexes] = useState<Record<string, number>>({})
   const [productTab, setProductTab] = useState<'basic' | 'pricing'>('basic')
+  const stickyProductActions = useTableStickyColumns<OpsProduct>({ endKeys: ['actions'] })
   const menus = MENUS['独立站电商运营']
   const query = searchQuery.trim().toLocaleLowerCase()
   const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
@@ -149,9 +300,14 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     stateRef.current = next
     setState(next)
   }
-  const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier} ${item.conclusion}`.toLocaleLowerCase().includes(query)), [query, state.products])
+  const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier}`.toLocaleLowerCase().includes(query)), [query, state.products])
   const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
-  function newProduct() { productAttachments.reset(); setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', inventory: 0, image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', conclusion: '继续研究', attachments: [], createdAt: Date.now() }) }
+  function newProduct() { productAttachments.reset(); setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', attachments: [], createdAt: Date.now() }) }
+  function editProduct(product: OpsProduct) {
+    productAttachments.reset()
+    setProductTab('basic')
+    setProductDraft({ ...product, images: getProductImages(product) })
+  }
   function closeProduct() {
     if (productAttachments.saving) return
     productAttachments.reset()
@@ -210,46 +366,54 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
     })
   }
   function renderProducts() {
-    const labels: Record<string, string> = { price: '售价', cost: '采购成本', shipping: '物流成本', paymentFee: '支付手续费', adCost: '预计投流成本', refundReserve: '退款预留' }
+    const labels = { price: '售价', cost: '供应商价格', shipping: '物流成本', paymentFee: '支付手续费', adCost: '广告成本', refundReserve: '退款预留' }
+    const columns: TableColumn<OpsProduct>[] = [
+      { key: 'image', header: '图片', width: pixel(76), align: 'center', renderCell: (product) => <ProductThumbnail product={product} /> },
+      { key: 'name', header: '标题', width: pixel(216), align: 'center', renderCell: (product) => <ProductTitle title={product.name} supplier={product.supplier} /> },
+      { key: 'cost', header: '供应商价格', width: proportional(1, { minWidth: 112 }), align: 'center', renderCell: (product) => productMoney(product.cost, product.currency) },
+      { key: 'price', header: '售价', width: proportional(1, { minWidth: 96 }), align: 'center', renderCell: (product) => productMoney(product.price, product.currency) },
+      { key: 'rank', header: '排名', width: proportional(1, { minWidth: 72 }), align: 'center', renderCell: (product) => product.rank == null ? '—' : productNumberFormat.format(product.rank) },
+      { key: 'clicks', header: '点击量', width: proportional(1, { minWidth: 88 }), align: 'center', renderCell: (product) => product.clicks == null ? '—' : productNumberFormat.format(product.clicks) },
+      { key: 'adCost', header: '广告成本', width: proportional(1, { minWidth: 104 }), align: 'center', renderCell: (product) => productMoney(product.adCost, product.currency) },
+      {
+        key: 'actions', header: '操作', width: pixel(104), align: 'center',
+        renderCell: (product) => (
+          <div className="operations-product-actions">
+            <IconButton label={`编辑商品 ${product.name}`} variant="ghost" size="sm" icon={<Icon name="edit" size={14} />} type="button" onClick={() => editProduct(product)} />
+            <IconButton label={`删除商品 ${product.name}`} variant="ghost" size="sm" icon={<Icon name="trash" size={14} />} type="button" onClick={() => setDeleteTarget({ type: 'product', id: product.id, name: product.name })} />
+          </div>
+        ),
+      },
+    ]
     return <>
       <div className="operations-section-head">
         <Button label="添加商品" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newProduct} />
       </div>
-      <div className="operations-product-list">
-        {products.length ? products.map((item) => {
-          const images = item.images?.length ? item.images : (item.image ? [item.image] : [])
-          const imageIndex = Math.min(productImageIndexes[item.id] || 0, Math.max(images.length - 1, 0))
-          const contribution = item.price - item.cost - item.shipping - item.paymentFee - item.refundReserve
-          const afterAdProfit = contribution - item.adCost
-          const margin = item.price > 0 ? contribution / item.price * 100 : 0
-          const breakEvenRoas = contribution > 0 ? item.price / contribution : 0
-          return <ClickableCard padding={0} className="operations-product-row" key={item.id} label={`查看商品 ${item.name}`} onClick={() => { productAttachments.reset(); setProductTab('basic'); setProductDraft({ ...item, images: item.images?.length ? item.images : item.image ? [item.image] : [] }) }}>
-            <div className="operations-product-row__media">
-              <div className="operations-product-media operations-product-media--row">
-                {images[imageIndex] ? <img src={images[imageIndex]} alt={item.name} /> : <div className="operations-product-placeholder"><Icon name="image" size={26} /><span>暂无商品图片</span></div>}
-                {images.length > 1 && <>
-                  <IconButton label="上一张" icon={<Icon name="chevronLeft" size={15} />} variant="ghost" size="sm" className="operations-product-arrow operations-product-arrow--prev" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex - 1 + images.length) % images.length }))} />
-                  <IconButton label="下一张" icon={<Icon name="chevronRight" size={15} />} variant="ghost" size="sm" className="operations-product-arrow operations-product-arrow--next" type="button" onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: (imageIndex + 1) % images.length }))} />
-                  <span className="operations-product-image-count">{imageIndex + 1}/{images.length}</span>
-                </>}
-              </div>
-              {images.length > 1 && <div className="operations-product-thumb-strip">{images.map((image, index) => <button type="button" key={`${image}-${index}`} className={`operations-product-thumb${index === imageIndex ? ' is-active' : ''}`} onClick={() => setProductImageIndexes((current) => ({ ...current, [item.id]: index }))}><img src={image} alt={`${item.name} 缩略图 ${index + 1}`} /></button>)}</div>}
-            </div>
-            <div className="operations-product-row__body">
-              <div className="operations-product-row__top"><span className="operations-status operations-status--准备上架">{item.conclusion}</span><div className="operations-product-row__actions"><IconButton label="编辑商品" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { productAttachments.reset(); setProductTab('basic'); setProductDraft({ ...item, images: item.images?.length ? item.images : item.image ? [item.image] : [] }) }} /><IconButton label="删除商品" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTarget({ type: 'product', id: item.id, name: item.name })} /></div></div>
-              <h2>{item.name}</h2>
-              <p className="operations-product-description">{item.description || item.evidence || '暂无商品描述和选品结论'}</p>
-              <div className="operations-product-meta"><span>售价 <strong>¥{money(item.price)}</strong></span><span>库存 <strong>{item.inventory ?? 0}</strong></span><span>SKU <strong>{item.sku || '未填写'}</strong></span><span>供应商 <strong>{item.supplier?.startsWith('http') ? <a className="operations-product-source-link" href={item.supplier} target="_blank" rel="noreferrer">打开商品原链接 <Icon name="link" size={11} /></a> : (item.supplier || '未填写')}</strong></span></div>
-              <div className="operations-metrics"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>广告后利润<strong>¥{money(afterAdProfit)}</strong></span><span>毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div>
-            </div>
-          </ClickableCard>
-        }) : <div className="operations-empty">还没有商品，点击“添加商品”开始建立第一条选品记录。</div>}
-      </div>
+      <Card padding={0}>
+        <Table
+          aria-label="选品列表"
+          className="operations-product-table"
+          data={products}
+          idKey="id"
+          columns={columns}
+          plugins={{ stickyColumns: stickyProductActions }}
+          density="balanced"
+          hasHover
+          emptyState={<EmptyState
+            title={query ? '没有匹配的商品' : '还没有商品'}
+            description={query ? '试试其他搜索关键词。' : '点击「添加商品」建立第一条选品记录。'}
+            isCompact
+          />}
+        />
+      </Card>
       {productDraft && (() => {
+        const currency = productDraft.currency ?? 'CNY'
         const contribution = productDraft.price - productDraft.cost - productDraft.shipping - productDraft.paymentFee - productDraft.refundReserve
         const margin = productDraft.price > 0 ? contribution / productDraft.price * 100 : 0
         const breakEvenRoas = contribution > 0 ? productDraft.price / contribution : 0
-        return <OpsModal title={productDraft.name ? '编辑商品' : '添加商品'} onClose={closeProduct}>
+        const source = getSupplierLink(productDraft.supplier)
+        const title = state.products.some((product) => product.id === productDraft.id) ? '编辑商品' : '添加商品'
+        return <OpsModal title={title} onClose={closeProduct}>
           <form className="operations-product-form" onSubmit={(event) => void saveProduct(event)}>
             <TabList value={productTab} onChange={(tab) => setProductTab(tab === 'pricing' ? 'pricing' : 'basic')} role="tablist" hasDivider>
               <Tab value="basic" label="商品信息" panelId="ops-product-info" />
@@ -257,20 +421,24 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
             </TabList>
             {productTab === 'basic' && <section id="ops-product-info" role="tabpanel" aria-label="商品信息" className="operations-product-form__section"><div className="operations-product-form__title">商品信息</div><div className="operations-product-form__grid">
               <Field label="商品标题" required><TextInput label="商品标题" value={productDraft.name} isLabelHidden width="100%" isRequired hasAutoFocus placeholder="例如：便携榨汁杯" onChange={(nextValue) => setProductDraft({ ...productDraft, name: nextValue })} /></Field>
-              <Field label="供应商 / 商品原链接"><TextInput label="供应商 / 商品原链接" isLabelHidden width="100%" value={productDraft.supplier} placeholder="填写供应商名称或商品原链接" onChange={(nextValue) => setProductDraft({ ...productDraft, supplier: nextValue })} /></Field>
+              <Field label="供应商链接">
+                <TextInput label="供应商链接" isLabelHidden width="100%" value={productDraft.supplier} placeholder="粘贴供应商商品链接" onChange={(value) => setProductDraft({ ...productDraft, supplier: value })} />
+                {source && <Link href={source} isExternalLink referrerPolicy="no-referrer" type="supporting" className="operations-product-source">打开供应商链接</Link>}
+              </Field>
               <Field label="SKU"><TextInput label="SKU" isLabelHidden width="100%" value={productDraft.sku || ''} placeholder="商品编码" onChange={(nextValue) => setProductDraft({ ...productDraft, sku: nextValue })} /></Field>
-              <Field label="库存"><NumberInput label="库存" value={productDraft.inventory ?? 0} isLabelHidden width="100%" min={0} step={1} isIntegerOnly isWheelEnabled={false} onChange={(nextValue) => setProductDraft({ ...productDraft, inventory: nextValue })} /></Field>
+              <NumberInput label="排名" value={productDraft.rank ?? null} width="100%" min={1} isIntegerOnly isWheelEnabled={false} hasClear onChange={(rank) => setProductDraft((draft) => draft && { ...draft, rank })} />
+              <NumberInput label="点击量" value={productDraft.clicks ?? null} width="100%" min={0} isIntegerOnly isWheelEnabled={false} hasClear onChange={(clicks) => setProductDraft((draft) => draft && { ...draft, clicks })} />
               <Field label="商品描述" required><TextArea label="商品描述" value={productDraft.description || ''} isLabelHidden width="100%" isRequired rows={4} placeholder="商品卖点、适用人群和选品判断" onChange={(nextValue) => setProductDraft({ ...productDraft, description: nextValue })} /></Field>
               <Field label="商品图片"><ProductImagePicker attachments={productAttachments} images={productDraft.images || []} fileIds={productDraft.imageFileIds || []} imagePaths={productDraft.imagePaths || []} onChange={(images, imageFileIds, imagePaths) => setProductDraft({ ...productDraft, images, imageFileIds, imagePaths, image: images[0] || '' })} /></Field>
             </div></section>}
             {productTab === 'pricing' && <section id="ops-product-pricing" role="tabpanel" aria-label="定价与成本" className="operations-product-form__section"><div className="operations-product-form__title">定价与成本</div><div className="operations-product-form__grid">
-              {(['price', 'cost', 'shipping', 'paymentFee', 'adCost', 'refundReserve'] as const).map((key) => <Field key={key} label={labels[key]}><NumberInput label={labels[key]} value={productDraft[key]} isLabelHidden width="100%" min={0} step={0.01} isWheelEnabled={false} onChange={(nextValue) => setProductDraft({ ...productDraft, [key]: nextValue })} /></Field>)}
-              <Selector label="商品状态" width="100%" value={productDraft.conclusion}
-                options={['继续研究', '进入测试', '准备上架', '作为备选', '暂停']}
-                onChange={(conclusion) => setProductDraft({ ...productDraft, conclusion: conclusion as ProductConclusion })} />
-            </div><div className="operations-calculator" aria-live="polite"><div className="operations-calculator__head"><strong>利润预估</strong><a href="https://ecomwith.com/zh/tools/pricing" target="_blank" rel="noreferrer">Ecomwith 定价工具 <Icon name="link" size={11} /></a></div><div className="operations-calculator__grid"><span>贡献利润<strong>¥{money(contribution)}</strong></span><span>贡献毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 CPA<strong>¥{money(Math.max(contribution, 0))}</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div><p>贡献利润 = 售价 − 采购 − 物流 − 手续费 − 退款预留；投流成本单独计算广告后利润。<a href="https://ecomwith.com/zh/tools/break-even-roas" target="_blank" rel="noreferrer">查看公式来源</a></p></div></section>}
+              {(['price', 'cost', 'shipping', 'paymentFee', 'adCost', 'refundReserve'] as const).map((key) => <Field key={key} label={labels[key]}><NumberInput label={labels[key]} value={productDraft[key]} isLabelHidden width="100%" min={0} step={0.01} units={currency} isWheelEnabled={false} onChange={(value) => setProductDraft((draft) => draft && { ...draft, [key]: value })} /></Field>)}
+              <Selector label="金额币种" width="100%" value={currency}
+                options={[{ value: 'CNY', label: '人民币（CNY）' }, { value: 'USD', label: '美元（USD）' }]}
+                onChange={(value) => setProductDraft((draft) => draft && { ...draft, currency: value === 'USD' ? 'USD' : 'CNY' })} />
+            </div><div className="operations-calculator" aria-live="polite"><div className="operations-calculator__head"><strong>利润预估</strong><a href="https://ecomwith.com/zh/tools/pricing" target="_blank" rel="noreferrer">Ecomwith 定价工具 <Icon name="link" size={11} /></a></div><div className="operations-calculator__grid"><span>贡献利润<strong>{productMoney(contribution, currency)}</strong></span><span>广告后利润<strong>{productMoney(contribution - productDraft.adCost, currency)}</strong></span><span>贡献毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 CPA<strong>{productMoney(Math.max(contribution, 0), currency)}</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div><p>贡献利润 = 售价 − 采购 − 物流 − 手续费 − 退款预留；投流成本单独计算广告后利润。<a href="https://ecomwith.com/zh/tools/break-even-roas" target="_blank" rel="noreferrer">查看公式来源</a></p></div></section>}
             {productAttachments.error && <Banner status="error" title={<>{productAttachments.error}</>} />}
-            <div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" isDisabled={productAttachments.saving} onClick={closeProduct} /><Button label="保存商品" variant="primary" type="submit" isLoading={productAttachments.saving} isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} /></div>
+            <WorkspaceDialogActions><Button label="取消" variant="ghost" type="button" isDisabled={productAttachments.saving} onClick={closeProduct} /><Button label="保存商品" variant="primary" type="submit" isLoading={productAttachments.saving} isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} /></WorkspaceDialogActions>
           </form>
         </OpsModal>
       })()}
@@ -355,15 +523,15 @@ export default function OperationsWorkspace({ ownerPhone, spaceId, activeMenu, s
           <Field label="投放结论">
             <TextArea label="投放结论" isLabelHidden width="100%" rows={3} value={campaignDraft.notes} onChange={(nextValue) => setCampaignDraft({ ...campaignDraft, notes: nextValue })} />
           </Field>
-          <div className="modal__actions operations-form-full">
+          <WorkspaceDialogActions>
             <Button label="取消" variant="ghost" onClick={() => setCampaignDraft(null)} />
             <Button label="保存计划" variant="primary" type="submit" isDisabled={!campaignDraft.name.trim()} />
-          </div>
+          </WorkspaceDialogActions>
         </form>
       </OpsModal>}
     </>
   }
-  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><Button label="新增复盘" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newReview} /></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <ClickableCard padding={0} className="operations-data-card" key={item.id} label={`查看复盘 ${item.title}`} onClick={() => { reviewAttachments.reset(); setReviewDraft({ ...item }) }}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { reviewAttachments.reset(); setReviewDraft({ ...item }) }} /><IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTarget({ type: 'ops-review', id: item.id, name: item.title })} /></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></ClickableCard>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={closeReview}><form className="operations-form-grid" onSubmit={(event) => void saveReview(event)}><Field label="复盘标题" required><TextInput label="复盘标题" value={reviewDraft.title} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setReviewDraft({ ...reviewDraft, title: nextValue })} /></Field><Field label="日期"><DatePicker label="复盘日期" value={reviewDraft.date} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, date: nextValue })} /></Field><Field label="复盘范围"><TextInput label="复盘范围" isLabelHidden width="100%" value={reviewDraft.scope} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, scope: nextValue })} /></Field><Selector label="结论" width="100%" value={reviewDraft.decision} options={['继续', '调整', '暂停']} onChange={(decision) => setReviewDraft({ ...reviewDraft, decision: decision as ReviewDecision })} /><Field label="完成了什么"><TextArea label="完成了什么" isLabelHidden width="100%" rows={4} value={reviewDraft.completed} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, completed: nextValue })} /></Field><Field label="问题与差异"><TextArea label="问题与差异" isLabelHidden width="100%" rows={4} value={reviewDraft.problems} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, problems: nextValue })} /></Field><Field label="关键洞察"><TextArea label="关键洞察" isLabelHidden width="100%" rows={4} value={reviewDraft.insight} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, insight: nextValue })} /></Field><Field label="下一步行动"><TextArea label="下一步行动" isLabelHidden width="100%" rows={4} value={reviewDraft.nextAction} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, nextAction: nextValue })} /></Field><Field label="关联资料"><AttachmentPicker label="添加附件" files={reviewAttachments.files} onRemove={reviewAttachments.remove} isDisabled={reviewAttachments.saving} onFiles={(files) => reviewAttachments.add(files, reviewDraft.attachments)} /><FileAttachmentList files={reviewDraft.attachments} onDelete={reviewAttachments.saving ? undefined : (file) => setReviewDraft({ ...reviewDraft, attachments: reviewDraft.attachments.filter((item) => item.id !== file.id) })} compact />{reviewAttachments.error && <Banner status="error" title={<>{reviewAttachments.error}</>} />}</Field><div className="modal__actions operations-form-full"><Button label="取消" variant="ghost" type="button" isDisabled={reviewAttachments.saving} onClick={closeReview} /><Button label="保存复盘" variant="primary" type="submit" /></div></form></OpsModal>}</> }
+  function renderReviews() { const reviews = state.reviews.filter((item) => !query || `${item.title} ${item.scope} ${item.insight}`.toLocaleLowerCase().includes(query)); return <><div className="operations-section-head"><div><div className="operations-eyebrow">从学习到行动</div><h1>学习复盘</h1><p>记录学到什么、做了什么、哪里不同，以及下一步要验证什么。</p></div><Button label="新增复盘" variant="primary" icon={<Icon name="plus" size={14} />} type="button" onClick={newReview} /></div><div className="operations-card-grid">{reviews.length ? reviews.map((item) => <ClickableCard padding={0} className="operations-data-card" key={item.id} label={`查看复盘 ${item.title}`} onClick={() => { reviewAttachments.reset(); setReviewDraft({ ...item }) }}><div className="operations-data-card__head"><span className="operations-status operations-status--进行中">{item.decision}</span><div><IconButton label="编辑" variant="ghost" size="sm" icon={<Icon name="edit" size={13} />} type="button" onClick={() => { reviewAttachments.reset(); setReviewDraft({ ...item }) }} /><IconButton label="删除" variant="ghost" size="sm" icon={<Icon name="trash" size={13} />} type="button" onClick={() => setDeleteTarget({ type: 'ops-review', id: item.id, name: item.title })} /></div></div><h2>{item.title}</h2><p className="operations-muted">{item.date} · {item.scope}</p><p className="operations-card-copy"><strong>完成：</strong>{item.completed || '暂无记录'}</p><p className="operations-card-copy"><strong>洞察：</strong>{item.insight || '暂无记录'}</p><FileAttachmentList files={item.attachments} compact /><div className="operations-card-meta">下一步：{item.nextAction || '待填写'}</div></ClickableCard>) : <div className="operations-empty">还没有复盘记录，完成一节教程或一次投放后记录判断。</div>}</div>{reviewDraft && <OpsModal title={reviewDraft.title ? '编辑学习复盘' : '新增学习复盘'} onClose={closeReview}><form className="operations-form-grid" onSubmit={(event) => void saveReview(event)}><Field label="复盘标题" required><TextInput label="复盘标题" value={reviewDraft.title} isLabelHidden width="100%" isRequired hasAutoFocus onChange={(nextValue) => setReviewDraft({ ...reviewDraft, title: nextValue })} /></Field><Field label="日期"><DatePicker label="复盘日期" value={reviewDraft.date} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, date: nextValue })} /></Field><Field label="复盘范围"><TextInput label="复盘范围" isLabelHidden width="100%" value={reviewDraft.scope} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, scope: nextValue })} /></Field><Selector label="结论" width="100%" value={reviewDraft.decision} options={['继续', '调整', '暂停']} onChange={(decision) => setReviewDraft({ ...reviewDraft, decision: decision as ReviewDecision })} /><Field label="完成了什么"><TextArea label="完成了什么" isLabelHidden width="100%" rows={4} value={reviewDraft.completed} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, completed: nextValue })} /></Field><Field label="问题与差异"><TextArea label="问题与差异" isLabelHidden width="100%" rows={4} value={reviewDraft.problems} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, problems: nextValue })} /></Field><Field label="关键洞察"><TextArea label="关键洞察" isLabelHidden width="100%" rows={4} value={reviewDraft.insight} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, insight: nextValue })} /></Field><Field label="下一步行动"><TextArea label="下一步行动" isLabelHidden width="100%" rows={4} value={reviewDraft.nextAction} onChange={(nextValue) => setReviewDraft({ ...reviewDraft, nextAction: nextValue })} /></Field><Field label="关联资料"><AttachmentPicker label="添加附件" files={reviewAttachments.files} onRemove={reviewAttachments.remove} isDisabled={reviewAttachments.saving} onFiles={(files) => reviewAttachments.add(files, reviewDraft.attachments)} /><FileAttachmentList files={reviewDraft.attachments} onDelete={reviewAttachments.saving ? undefined : (file) => setReviewDraft({ ...reviewDraft, attachments: reviewDraft.attachments.filter((item) => item.id !== file.id) })} compact />{reviewAttachments.error && <Banner status="error" title={<>{reviewAttachments.error}</>} />}</Field><WorkspaceDialogActions><Button label="取消" variant="ghost" type="button" isDisabled={reviewAttachments.saving} onClick={closeReview} /><Button label="保存复盘" variant="primary" type="submit" /></WorkspaceDialogActions></form></OpsModal>}</> }
   const activeMenuDef = menus.find((menu) => menu.key === activeMenu) || menus[0]
   if (activeMenu !== 'ops-products' && activeMenu !== 'ops-ads') {
     return <OperationsKnowledgeBoard

@@ -1,6 +1,5 @@
 import { Dialog } from '@astryxdesign/core/Dialog'
-import { HStack } from '@astryxdesign/core/Layout'
-import WorkspaceDialog from './WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from './WorkspaceDialog'
 import { Table, TableHeader, TableRow, TableHeaderCell, TableBody, TableCell } from '@astryxdesign/core/Table'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { TextInput } from '@astryxdesign/core/TextInput'
@@ -96,10 +95,10 @@ function DiagramEditor({ label, value, editable, onChange }: { label: string; va
         setRenameNode(null)
       }}>
         <TextInput label="节点名称" isRequired hasAutoFocus value={renameNode.name} onChange={(name) => setRenameNode({ ...renameNode, name })} />
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setRenameNode(null)} />
           <Button label="保存" variant="primary" type="submit" isDisabled={!renameNode.name.trim()} />
-        </HStack>
+        </WorkspaceDialogActions>
       </form>
     </WorkspaceDialog>}
   </section>

@@ -12,7 +12,7 @@ import { Toolbar } from '@astryxdesign/core/Toolbar'
 import { useState, type FormEvent } from 'react'
 import ConfirmDataDeletion from '../components/ConfirmDataDeletion'
 import TopBar from '../components/TopBar'
-import WorkspaceDialog from '../components/WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from '../components/WorkspaceDialog'
 import WorkspaceIcon from '../components/Icon'
 import { ALL_TYPES, type Space, type TypeName } from '../lib/store'
 
@@ -87,10 +87,10 @@ export default function Home({ spaces, onOpen, onCreate, onRename, onDelete, onL
             if (type) setDraft({ ...draft, type })
           }} />}
         </VStack>
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setDraft(null)} />
           <Button label={draft.id ? '保存' : '创建'} variant="primary" type="submit" isDisabled={!draft.name.trim()} />
-        </HStack>
+        </WorkspaceDialogActions>
       </form>
     </WorkspaceDialog>}
     {deleteTarget && <ConfirmDataDeletion title={'删除空间「' + deleteTarget.name + '」？'} onClose={() => setDeleteTarget(null)} onDelete={() => onDelete(deleteTarget.id)} />}

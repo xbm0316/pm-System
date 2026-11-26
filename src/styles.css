@@ -6401,53 +6401,21 @@ body {
 .operations-status--学习中 { color: var(--primary); background: var(--primary-soft); }
 .operations-status--待复习 { color: var(--warning); background: var(--warning-soft); }
 
-/* 独立站运营：知识类型 Tab 与商品卡片 */
+/* 独立站运营：知识类型 Tab 与利润预估 */
 .operations-type-head--selected { align-items: center; margin-bottom: 14px; padding: 0 2px; }
 .operations-type-head--selected h2 { gap: 0; }
 .operations-type-head--selected h2::before { content: ''; width: 8px; height: 8px; margin-right: 9px; border-radius: 50%; background: var(--type-color); box-shadow: 0 0 0 4px color-mix(in srgb, var(--type-color) 10%, transparent); }
 .operations-type-head--selected p { margin-left: 17px; }
-.operations-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.operations-product-card { min-height: 0; padding: 0 16px 16px; overflow: hidden; }
-.operations-product-card .operations-data-card__head { margin-top: 14px; }
-.operations-product-media { position: relative; height: 184px; margin: 0 -16px; overflow: hidden; background: var(--surface-sunken); }
-.operations-product-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.operations-product-placeholder { display: grid; place-items: center; align-content: center; gap: 7px; height: 100%; color: var(--text-3); font-size: 11px; }
-.operations-product-arrow { position: absolute; top: 50%; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid color-mix(in srgb, white 58%, var(--glass-border)); border-radius: 50%; color: var(--text); background: color-mix(in srgb, var(--glass-bg-strong) 78%, transparent); box-shadow: var(--glass-shadow); transform: translateY(-50%); }
-.operations-product-arrow:hover { color: var(--primary); border-color: var(--primary); }
-.operations-product-arrow--prev { left: 10px; }
-.operations-product-arrow--next { right: 10px; }
-.operations-product-image-count { position: absolute; right: 10px; bottom: 9px; padding: 3px 7px; border-radius: 999px; color: white; background: rgb(0 0 0 / 48%); font-size: 10px; }
 .operations-calculator { grid-column: 1 / -1; padding: 14px; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--glass-border)); border-radius: var(--r-card); background: color-mix(in srgb, var(--primary-soft) 52%, var(--glass-bg)); }
 .operations-calculator__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-2); font-size: 12px; }
 .operations-calculator__head a, .operations-calculator p a { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); text-decoration: none; font-size: 10px; }
-.operations-calculator__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
+.operations-calculator__grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin-top: 12px; }
 .operations-calculator__grid span { padding: 9px; border-radius: var(--r-item); background: color-mix(in srgb, var(--glass-bg) 70%, transparent); color: var(--text-3); font-size: 10px; }
 .operations-calculator__grid strong { display: block; margin-top: 4px; color: var(--text); font-size: 14px; }
 .operations-calculator p { margin-top: 11px; color: var(--text-3); font-size: 10px; line-height: 1.5; }
 .operations-calculator p a { margin-left: 6px; }
-@media (max-width: 1000px) { .operations-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .operations-product-grid, .operations-calculator__grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .operations-calculator__grid { grid-template-columns: 1fr; } }
 
-/* 商品上传页：电商后台式商品卡片与分区表单 */
-.operations-product-list { display: grid; gap: 12px; }
-.operations-product-row { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; min-height: 218px; padding: 14px; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--surface); box-shadow: var(--glass-shadow), var(--glass-inset); transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
-.operations-product-row:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 10px 24px -18px var(--primary), var(--glass-inset); }
-.operations-product-row__media { min-width: 0; }
-.operations-product-media--row { height: 176px; margin: 0; border-radius: var(--r-item); }
-.operations-product-row__body { min-width: 0; display: flex; flex-direction: column; }
-.operations-product-row__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.operations-product-row__actions { display: flex; align-items: center; gap: 4px; }
-.operations-product-row__body h2 { margin-top: 14px; color: var(--text); font-size: 17px; line-height: 1.4; }
-.operations-product-description { display: -webkit-box; max-width: 720px; margin-top: 7px; overflow: hidden; color: var(--text-3); font-size: 11px; line-height: 1.6; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.operations-product-meta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; padding: 11px 0; border-top: 1px solid var(--surface-sunken); border-bottom: 1px solid var(--surface-sunken); color: var(--text-3); font-size: 10.5px; }
-.operations-product-meta strong { margin-left: 4px; color: var(--text-2); font-weight: 600; }
-.operations-product-source-link { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); font-size: 10px; text-decoration: none; }
-.operations-product-source-link:hover { text-decoration: underline; }
-.operations-product-row .operations-metrics { margin-top: auto; padding-bottom: 0; border-bottom: 0; }
-.operations-product-thumb-strip { display: flex; gap: 5px; margin-top: 7px; overflow-x: auto; }
-.operations-product-thumb { flex: 0 0 34px; width: 34px; height: 34px; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-sunken); }
-.operations-product-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.operations-product-thumb.is-active { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-ring); }
 .operations-product-form { display: grid; gap: 18px; }
 .operations-product-form__section { padding: 16px; border: 1px solid var(--glass-border); border-radius: var(--r-card); background: color-mix(in srgb, var(--glass-bg) 64%, transparent); }
 .operations-product-form__title { margin-bottom: 14px; color: var(--text); font-size: 13px; font-weight: 650; }
@@ -6458,7 +6426,7 @@ body {
 .operations-product-upload strong, .operations-product-upload span { display: block; }
 .operations-product-upload strong { font-size: 11px; }
 .operations-product-upload span { margin-top: 3px; color: var(--text-3); font-size: 10px; line-height: 1.45; }
-@media (max-width: 760px) { .operations-product-row { grid-template-columns: 1fr; gap: 13px; } .operations-product-media--row { height: 210px; } .operations-product-form__grid { grid-template-columns: 1fr; } .operations-product-form__grid .operations-field:has(textarea) { grid-column: auto; } }
+@media (max-width: 760px) { .operations-product-form__grid { grid-template-columns: 1fr; } .operations-product-form__grid .operations-field:has(textarea) { grid-column: auto; } }
 .operations-product-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--glass-border); border-radius: var(--r-item); background: color-mix(in srgb, var(--surface-sunken) 72%, transparent); }
 .operations-product-tabs button { flex: 1 1 0; min-height: 36px; padding: 7px 12px; border: 0; border-radius: 8px; color: var(--text-3); background: transparent; font-size: 11px; font-weight: 600; transition: color .18s ease, background .18s ease, box-shadow .18s ease; }
 .operations-product-tabs button:hover { color: var(--text); background: color-mix(in srgb, var(--surface) 70%, transparent); }
@@ -6503,28 +6471,6 @@ body {
   }
 }
 
-/* 商品卡片沿用项目工作台任务卡片的玻璃颜色与边框质感。 */
-.operations-product-row {
-  border-color: color-mix(in srgb, var(--border) 86%, var(--primary-soft));
-  background: linear-gradient(135deg, rgba(255, 255, 255, .76), rgba(236, 244, 255, .46) 52%, rgba(255, 255, 255, .28));
-  box-shadow: 0 14px 30px rgba(38, 59, 84, .12), inset 0 1px 0 rgba(255, 255, 255, .96), inset 0 -1px 0 rgba(104, 132, 174, .12);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
-  backdrop-filter: blur(18px) saturate(145%);
-}
-.operations-product-row:hover {
-  border-color: color-mix(in srgb, var(--primary) 52%, var(--border));
-  box-shadow: 0 12px 22px -18px var(--primary), inset 0 1px 0 rgba(255, 255, 255, .55);
-}
-.operations-product-media--row,
-.operations-product-placeholder {
-  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
-}
-[data-theme='dark'] .operations-product-row {
-  border-color: rgba(255, 255, 255, .24);
-  background: linear-gradient(135deg, rgba(54, 66, 84, .78), rgba(30, 39, 52, .52) 58%, rgba(83, 66, 57, .32));
-  box-shadow: 0 14px 30px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .20), inset 0 -1px 0 rgba(0, 0, 0, .20);
-}
-
 /* 独立站运营：大屏内容随可用空间扩展，避免固定三列和窄图区域造成大片空白。
    规则仅作用于运营工作台，产品经理与项目经理布局保持原有断点。 */
 .operations-workspace,
@@ -6553,10 +6499,6 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
 }
 
-.operations-product-row {
-  grid-template-columns: clamp(220px, 17vw, 320px) minmax(0, 1fr);
-}
-
 @media (min-width: 1680px) {
   .operations-progress-grid,
   .operations-card-grid,
@@ -6570,14 +6512,6 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
   }
 
-  .operations-product-row {
-    gap: 24px;
-    padding: 18px;
-  }
-
-  .operations-product-media--row {
-    height: clamp(176px, 14vw, 260px);
-  }
 }
 
 @media (max-width: 760px) {

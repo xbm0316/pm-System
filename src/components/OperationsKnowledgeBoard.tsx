@@ -16,7 +16,7 @@ import { Toolbar } from '@astryxdesign/core/Toolbar'
 import { useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { uid } from '../lib/store'
 import WorkspaceIcon from './Icon'
-import WorkspaceDialog from './WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from './WorkspaceDialog'
 
 type ResourceType = '账号' | '教程'
 
@@ -316,10 +316,10 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
           </>}
           <TextInput label="链接" type="url" value={cardDraft.url} onChange={(url) => setCardDraft({ ...cardDraft, url })} placeholder="https://" />
         </VStack>
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setCardDraft(null)} />
           <Button label="保存资料" variant="primary" type="submit" isDisabled={!cardDraft.title.trim() || (cardDraft.resourceType === '账号' && (!cardDraft.account?.trim() || !cardDraft.password))} />
-        </HStack>
+        </WorkspaceDialogActions>
       </form>
     </WorkspaceDialog>}
 
@@ -331,20 +331,20 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
             onChange={(color) => setTypeDraft({ ...typeDraft, color })} />
           <TextArea label="类型说明" value={typeDraft.description} onChange={(description) => setTypeDraft({ ...typeDraft, description })} />
         </VStack>
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setTypeDraft(null)} />
           <Button label="保存类型" variant="primary" type="submit" isDisabled={!typeDraft.title.trim()} />
-        </HStack>
+        </WorkspaceDialogActions>
       </form>
     </WorkspaceDialog>}
 
     {deletion && <WorkspaceDialog title={deletion.kind === 'type' ? '删除资料类型？' : '删除资料？'} onClose={() => setDeletion(null)}>
       <div className="knowledge-kanban__form">
         <Text type="body">{deletion.kind === 'type' ? `删除「${deletion.name}」后，该类型下的资料也会被删除。` : `删除「${deletion.name}」后无法恢复。`}</Text>
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setDeletion(null)} />
           <Button label="确认删除" variant="destructive" onClick={confirmDeletion} />
-        </HStack>
+        </WorkspaceDialogActions>
       </div>
     </WorkspaceDialog>}
   </>

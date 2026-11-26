@@ -95,6 +95,22 @@ html[data-astryx-theme] body {
 .app-login { flex: 1; min-height: 0; display: grid; align-content: center; justify-items: center; padding: var(--spacing-4); }
 .app-login > div { width: min(100%, 400px); }
 .app-dialog-form { display: grid; gap: var(--spacing-4); }
+.app-dialog-actions,
+dialog .modal__actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  background: var(--color-background-surface);
+}
+.app-dialog-actions {
+  grid-column: 1 / -1;
+  padding-block: var(--spacing-3);
+}
+.app-dialog-content:has(.app-dialog-actions),
+dialog .modal:has(> .modal__actions) {
+  scroll-padding-block-end: calc(var(--size-element-md) + var(--spacing-6));
+}
 .attachment-picker { display: grid; min-width: 0; gap: var(--spacing-2); }
 .attachment-picker > .attachment-picker__trigger { justify-content: flex-start; }
 .attachment-picker__hint, .attachment-picker__destination { color: var(--color-text-secondary); }
@@ -140,6 +156,61 @@ html[data-astryx-theme] body {
   justify-content: flex-end;
 }
 
+.operations-product-table { font-variant-numeric: tabular-nums; }
+.operations-product-title {
+  display: block;
+  max-inline-size: 200px;
+  margin-inline: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.operations-product-title-tooltip { overflow-wrap: anywhere; }
+.operations-product-actions { display: flex; justify-content: center; align-items: center; gap: var(--spacing-1); }
+.operations-product-thumbnail { inline-size: 40px; vertical-align: middle; }
+button.operations-product-thumbnail { position: relative; block-size: 40px; }
+.operations-product-thumbnail img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: var(--radius-element);
+  object-fit: cover;
+}
+.operations-product-source { margin-block-start: var(--spacing-1); }
+.operations-product-gallery {
+  --product-gallery-width: min(26rem, calc(100dvw - 4 * var(--spacing-4)));
+  --product-gallery-gap: var(--spacing-2);
+  --product-gallery-tile: calc((var(--product-gallery-width) - 2 * var(--product-gallery-gap)) / 3);
+  --product-gallery-page: calc(var(--product-gallery-visible-images) * var(--product-gallery-tile) + (var(--product-gallery-visible-images) - 1) * var(--product-gallery-gap));
+  inline-size: var(--product-gallery-page);
+}
+.operations-product-gallery__page {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--product-gallery-tile);
+  justify-content: start;
+  gap: var(--product-gallery-gap);
+  inline-size: var(--product-gallery-page);
+}
+.operations-product-gallery__slide {
+  display: grid;
+  place-items: center;
+  inline-size: var(--product-gallery-tile);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-element);
+  background: var(--color-background-surface);
+  color: var(--color-text-secondary);
+}
+.operations-product-gallery__slide img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  object-fit: contain;
+}
+
 .status-group, .collection-group {
   background: var(--color-background-muted);
   border-color: var(--color-border);
@@ -152,7 +223,7 @@ html[data-astryx-theme] body {
 .status-group__count { background: var(--color-background-gray); color: var(--color-text-secondary); }
 
 html[data-astryx-theme] :is(.status-group .req-card, .req-card, .comp-card, .meeting-card, .collection-card,
-  .operations-product-row, .operations-data-card, .summary-list__item, .project-archive__item,
+  .operations-data-card, .summary-list__item, .project-archive__item,
   .file-attachment-item, .retro-card, .track-card, .track-related-item, .prd-text, .prd-textarea,
   .prd-table-wrap, .rich-editor--editable, .attachment-item) {
   background: var(--color-background-card);
@@ -165,13 +236,13 @@ html[data-astryx-theme] :is(.status-group .req-card, .req-card, .comp-card, .mee
 
 html[data-astryx-theme] .status-group .req-card::before,
 html[data-astryx-theme] .status-group .req-card:not(.astryx-clickable-card)::after { content: none; }
-html[data-astryx-theme] :is(.status-group .req-card:hover, .req-card:hover, .comp-card:hover, .meeting-card:hover, .collection-card:hover, .operations-product-row:hover) {
+html[data-astryx-theme] :is(.status-group .req-card:hover, .req-card:hover, .comp-card:hover, .meeting-card:hover, .collection-card:hover) {
   background: var(--color-background-card);
   border-color: var(--color-border-emphasized);
   box-shadow: var(--shadow-low);
 }
 
-html[data-astryx-theme] :is(.req-card, .comp-card, .meeting-card, .collection-card, .operations-product-row, .operations-data-card).astryx-clickable-card:hover {
+html[data-astryx-theme] :is(.req-card, .comp-card, .meeting-card, .collection-card, .operations-data-card).astryx-clickable-card:hover {
   transform: none;
   box-shadow: none;
 }

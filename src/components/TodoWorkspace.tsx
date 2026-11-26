@@ -17,7 +17,7 @@ import { dateKey } from './DatePicker'
 import Icon from './Icon'
 import RichTextField from './RichTextField'
 import { richTextPlainText } from '../lib/richText'
-import WorkspaceDialog from './WorkspaceDialog'
+import WorkspaceDialog, { WorkspaceDialogActions } from './WorkspaceDialog'
 
 interface Props {
   todos: Todo[]
@@ -137,21 +137,21 @@ export default function TodoWorkspace({ todos, searchQuery, error, onOpenDetails
           <RichTextField label="内容" value={draft.content} placeholder="补充待办内容" onChange={(content) => setDraft({ ...draft, content })} />
           {error && <Banner status="error" title={error} />}
         </VStack>
-        <HStack gap={2} hAlign="end" wrap="wrap">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setDraft(null)} />
           <Button label="保存" variant="primary" type="submit" isDisabled={!canSave} />
           {!draft.id && <Button label="连续保存" variant="ghost" type="submit" value="continue" isDisabled={!canSave} />}
-        </HStack>
+        </WorkspaceDialogActions>
       </form>
     </WorkspaceDialog>}
     {deleteTarget && <WorkspaceDialog title="确认删除待办？" onClose={() => setDeleteTarget(null)} purpose="info">
       <div className="app-dialog-form">
         <Text>删除「{deleteTarget.title}」后无法恢复。</Text>
         {error && <Banner status="error" title={error} />}
-        <HStack gap={2} hAlign="end">
+        <WorkspaceDialogActions>
           <Button label="取消" variant="secondary" onClick={() => setDeleteTarget(null)} />
           <Button label="确认删除" variant="destructive" onClick={() => { if (onDelete(deleteTarget.id)) setDeleteTarget(null) }} />
-        </HStack>
+        </WorkspaceDialogActions>
       </div>
     </WorkspaceDialog>}
   </div>
