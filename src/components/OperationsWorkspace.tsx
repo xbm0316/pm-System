@@ -74,7 +74,7 @@ export interface OperationsState { tutorialCards: TutorialCard[]; products: OpsP
 
 const TUTORIAL_BASE = 'https://ecomwith.com/zh/tutorials/basics/'
 const TOOLS_BASE = 'https://ecomwith.com/zh/tools/'
-const tutorialTypes: TutorialType[] = [
+const legacyTutorialTypes: TutorialType[] = [
   { id: 'route', title: '独立站起步 · 18 节课程', description: '严格按照 Ecomwith 的学习顺序，从模式、选品、主体一路完成到上线。', color: '#0951C3' },
   { id: 'assets', title: '课程执行资产', description: '把课程中的检查清单、指标复盘和下一步行动沉淀下来。', color: '#0e9b83' },
   { id: 'tools', title: 'Ecomwith 工具', description: '直接打开教程站点提供的研究、ROAS 和 UTM 工具。', color: '#e39a26' },
@@ -82,7 +82,7 @@ const tutorialTypes: TutorialType[] = [
   { id: 'traffic', title: '投流扩展', description: '记录 Meta、Google、TikTok、GA4 和 SEO 的外部学习资料与实操。', color: '#bd5bb4' },
 ]
 interface TutorialSeed { typeId: string; title: string; description: string; url: string; source: string; goal: string; steps: string; outputs: string }
-const tutorialSeeds: TutorialSeed[] = [
+const legacyTutorials: TutorialSeed[] = [
   ['跨境电商与独立站：从中国供应链，认识一门面向海外的生意', '从一位顾客买杯子的过程，弄清跨境电商、品牌独立站和平台的区别。', 'cross-border-ecommerce', '明确目标市场、客户和经营方式。', '读完后写下目标市场、目标客户和购买理由。', '目标市场\\n目标客户\\n购买理由'],
   ['Shopify 独立站入门：弄清你在经营什么', '把独立站、商品、主市场、收款、履约和数据拆成一张经营地图。', 'store-basics', '知道经营链路和暂停判断。', '画出自己的经营链路，并写下第一个可复查判断。', '经营链路\\n首批商品计划'],
   ['30 天启动独立站：起步路线和顺序', '用 30 天路线排好市场、SKU、主体、现金、域名、收款、物流和数据。', 'getting-started', '形成 30 天启动计划。', '列出任务、预算、暂停线和上线检查点。', '30 天计划\\n启动预算\\n暂停线'],
@@ -102,7 +102,7 @@ const tutorialSeeds: TutorialSeed[] = [
   ['独立站客服与售后：SLA、退款和复购触达', '建立客服 SLA、异常分流、短回复模板和购后触达流程。', 'customer-care', '让首批订单有清晰的售后路径。', '准备客服入口、退款流程和回复模板。', '客服入口\\nSLA\\n回复模板'],
   ['Shopify 系统集成：一笔订单怎么跑通证据链', '核对订单邮件、付款、GA4 purchase、履约和客服查询。', 'system-integration', '让经营和数据链路可复查。', '用一笔真实或受控订单完成证据链核对。', '订单证据\\nGA4 事件\\n履约证据'],
 ].map(([title, description, slug, goal, steps, outputs]) => ({ typeId: 'route', title, description, url: `${TUTORIAL_BASE}${slug}`, source: 'Ecomwith', goal, steps, outputs }))
-tutorialSeeds.push(
+legacyTutorials.push(
   { typeId: 'assets', title: '独立站上线执行包', description: '把核心检查清单、指标复盘表和下一步行动表集中管理。', url: `${TUTORIAL_BASE}`, source: 'Ecomwith', goal: '每节课留下可复查资产。', steps: '核心检查清单\\n指标复盘表\\n下一步行动表', outputs: '检查清单\\n指标记录\\n行动表' },
   { typeId: 'tools', title: 'Store Inspector 店铺研究', description: '用于研究店铺和竞品结构。', url: `${TOOLS_BASE}store-inspector`, source: 'Ecomwith 工具', goal: '保存研究对象和观察结论。', steps: '输入店铺\\n记录页面结构\\n保存观察', outputs: '店铺研究记录' },
   { typeId: 'tools', title: 'ROAS 计算器', description: '计算广告投入与收入的关系。', url: `${TOOLS_BASE}roas`, source: 'Ecomwith 工具', goal: '建立投流判断基线。', steps: '填写花费\\n填写收入\\n记录 ROAS', outputs: 'ROAS 结果' },
@@ -110,13 +110,26 @@ tutorialSeeds.push(
   { typeId: 'tools', title: 'UTM 生成器', description: '为广告、内容和渠道生成可追踪链接。', url: `${TOOLS_BASE}utm-builder`, source: 'Ecomwith 工具', goal: '让来源数据可以回查。', steps: '填写来源\\n填写媒介\\n生成链接', outputs: 'UTM 链接' },
   { typeId: 'traffic', title: 'Meta / Google / TikTok 投流资料', description: '这里保存外部投流教程、广告账户资料、素材和数据追踪记录。', url: '', source: '我的外部资料', goal: '把投流学习与实际广告计划关联起来。', steps: '添加外部链接\\n记录广告账户\\n记录素材与受众', outputs: '投流资料\\n广告计划\\n数据复盘' },
 )
-function initialCards(): TutorialCard[] { const now = Date.now(); return tutorialSeeds.map((definition, index) => ({ id: `tutorial-${index + 1}`, ...definition, resourceType: '教程', status: '未开始', notes: '', attachments: [], nextAction: '', reviewDate: '', createdAt: now, updatedAt: now })) }
-function initialState(): OperationsState { return { tutorialCards: initialCards(), products: [], campaigns: [], reviews: [], knowledgeTypes: tutorialTypes } }
+function isUneditedSample(card: TutorialCard) {
+  const index = /^tutorial-(\d+)$/.exec(card.id)?.[1]
+  const sample = index ? legacyTutorials[Number(index) - 1] : undefined
+  return sample && Object.entries(sample).every(([key, value]) => card[key as keyof TutorialSeed] === value)
+    && (!card.resourceType || card.resourceType === '教程') && card.status === '未开始'
+    && !card.account && !card.password && !card.notes && !card.attachments?.length && !card.nextAction && !card.reviewDate
+}
+
 export function normalizeOperationsState(value: unknown): OperationsState {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return initialState()
-  const parsed = value as Partial<OperationsState>
+  const parsed = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<OperationsState> : {}
+  const tutorialCards = Array.isArray(parsed.tutorialCards) ? parsed.tutorialCards.filter((card) => !isUneditedSample(card)) : []
+  const referencedTypes = new Set(tutorialCards.map((card) => card.typeId))
+  const previousTypes = Array.isArray(parsed.knowledgeTypes) ? parsed.knowledgeTypes : legacyTutorialTypes
+  const knowledgeTypes = previousTypes.filter((type) => {
+    if (referencedTypes.has(type.id)) return true
+    const sample = legacyTutorialTypes.find((entry) => entry.id === type.id)
+    return !sample || type.title !== sample.title || type.description !== sample.description || type.color !== sample.color
+  })
   return {
-    tutorialCards: Array.isArray(parsed.tutorialCards) ? parsed.tutorialCards : initialCards(),
+    tutorialCards,
     products: Array.isArray(parsed.products) ? parsed.products.map((item) => {
       const images = item.images?.length ? item.images : item.image ? [item.image] : []
       return { ...item, images: images.map((url, index) => item.imageFileIds?.[index] ? localFileUrl(item.imageFileIds[index]) : url) }
@@ -126,7 +139,7 @@ export function normalizeOperationsState(value: unknown): OperationsState {
       ...item,
       attachments: Array.isArray(item.attachments) ? item.attachments.filter((file) => file && typeof file === 'object' && file.id) : [],
     })) : [],
-    knowledgeTypes: parsed.knowledgeTypes?.length ? parsed.knowledgeTypes : tutorialTypes,
+    knowledgeTypes,
   }
 }
 function money(value: number) { return Number.isFinite(value) ? value.toFixed(2) : '0.00' }
@@ -306,7 +319,7 @@ export default function OperationsWorkspace({ state, updateState, spaceId, activ
   const stickyProductActions = useTableStickyColumns<OpsProduct>({ endKeys: ['actions'] })
   const menus = MENUS['独立站电商运营']
   const query = searchQuery.trim().toLocaleLowerCase()
-  const knowledgeTypes = state.knowledgeTypes?.length ? state.knowledgeTypes : tutorialTypes
+  const knowledgeTypes = state.knowledgeTypes ?? []
   const products = useMemo(() => state.products.filter((item) => !query || `${item.name} ${item.supplier}`.toLocaleLowerCase().includes(query)), [query, state.products])
   const campaigns = useMemo(() => state.campaigns.filter((item) => !query || `${item.name} ${item.platform} ${item.status}`.toLocaleLowerCase().includes(query)), [query, state.campaigns])
   function newProduct() { productAttachments.reset(); setProductTab('basic'); setProductDraft({ id: uid(), name: '', description: '', sku: '', image: '', images: [], imageFileIds: [], imagePaths: [], supplier: '', cost: 0, price: 0, shipping: 0, paymentFee: 0, adCost: 0, refundReserve: 0, evidence: '', competition: '', fulfillment: '', materials: '', attachments: [], createdAt: Date.now() }) }
@@ -555,7 +568,7 @@ export default function OperationsWorkspace({ state, updateState, spaceId, activ
       searchQuery={searchQuery}
       onChange={(update) => updateState((current) => ({
         ...current,
-        ...update({ knowledgeTypes: current.knowledgeTypes?.length ? current.knowledgeTypes : tutorialTypes, tutorialCards: current.tutorialCards }),
+        ...update({ knowledgeTypes: current.knowledgeTypes ?? [], tutorialCards: current.tutorialCards }),
       }))}
     />
   }

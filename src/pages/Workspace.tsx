@@ -11,7 +11,7 @@ import ProjectManagerBoard, { normalizeProjectStore } from '../components/Projec
 import OperationsWorkspace, { normalizeOperationsState, type OperationsState } from '../components/OperationsWorkspace'
 import SummaryWorkspace from '../components/SummaryWorkspace'
 import TodoWorkspace, { TodoDetailDialog } from '../components/TodoWorkspace'
-import WorkspaceDialog, { WorkspaceDialogActions, WorkspaceOverlay } from '../components/WorkspaceDialog'
+import { WorkspaceOverlay } from '../components/WorkspaceDialog'
 import { WORKSPACE_TABS, MENUS, type Space, type Requirement, type RequirementStatus, type Competitor, type WorkspaceTabKey, type ProjectStore } from '../lib/store'
 import { fetchRequirements, insertRequirement, updateRequirement, updateRequirementStatus, updateRequirementAttachments, fetchCompetitors, insertCompetitor, updateCompetitor, deleteCompetitorRow, deleteRequirementRow } from '../lib/api'
 import { deleteLocalFilesForEntity, listLocalFiles } from '../lib/localFiles'
@@ -20,28 +20,12 @@ import { useWorkspaceSync } from '../lib/workspaceSync'
 
 const TODO_TAB = { key: 'todos', label: '待办事项', icon: 'check' }
 
-function previewRequirements(spaceId: string): Requirement[] {
-  const now = Date.now()
-  return (['调研中', '已评审', '开发中', '测试中', '已上线'] as RequirementStatus[]).flatMap((status, statusIndex) => Array.from({ length: 10 }, (_, index) => ({
-    id: `preview-req-${spaceId}-${statusIndex + 1}-${index + 1}`,
-    spaceId,
-    version: `V${statusIndex + 1}.${index + 1}`,
-    name: `${status}测试需求 ${index + 1}`,
-    content: `用于预览 ${status} 状态下的需求卡片、详情和 PRD 交互。`,
-    priority: (['P0', 'P1', 'P2', 'P3'] as const)[index % 4],
-    status,
-    createdAt: now - (statusIndex * 10 + index) * 60 * 60 * 1000,
-    launchDate: status === '已上线' ? new Date(now - index * 24 * 60 * 60 * 1000).toISOString() : new Date(now + (index + 1) * 24 * 60 * 60 * 1000).toISOString(),
-  })))
-}
-
 interface Props {
   space: Space
-  ownerPhone: string
   onBackToHome: () => void
 }
 
-export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
+export default function Workspace({ space, onBackToHome }: Props) {
   const isProductManager = space.types.includes('产品经理')
   const isOperationsManager = !isProductManager && space.types.includes('独立站电商运营')
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTabKey>('workbench')
@@ -52,7 +36,6 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const [reminderItems, setReminderItems] = useState<{ id: string; kind: 'task' | 'issue' | 'requirement'; title: string; dueDate: string; taskId?: string; reqId?: string; projectId?: string }[]>([])
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [summaryOpen, setSummaryOpen] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
   const [productWriteError, setProductWriteError] = useState('')
   const [productLoadError, setProductLoadError] = useState('')
   const [productLoadAttempt, setProductLoadAttempt] = useState(0)
@@ -61,7 +44,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
   const [addSignal, setAddSignal] = useState<Record<string, number>>({})
   const [requirements, setRequirements] = useState<Requirement[]>([])
   const [competitors, setCompetitors] = useState<Competitor[]>([])
-  const sync = useWorkspaceSync(ownerPhone, space.id)
+  const sync = useWorkspaceSync(space.id)
   const operationsRow = sync.rows?.operations
   const projectRow = sync.rows?.projects
   const todoRow = sync.rows?.todos
@@ -87,8 +70,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
     let cancelled = false
     void (async () => {
       const [fetchedRequirements, cs] = await Promise.all([fetchRequirements(space.id), fetchCompetitors(space.id)])
-      const rs = import.meta.env.DEV && fetchedRequirements.length === 0 ? previewRequirements(space.id) : fetchedRequirements
-      const requirementsWithLocalFiles = await Promise.all(rs.map(async (requirement) => ({
+      const requirementsWithLocalFiles = await Promise.all(fetchedRequirements.map(async (requirement) => ({
         ...requirement,
         attachments: await listLocalFiles('requirement', requirement.id) as Requirement['attachments'],
       })))
@@ -102,7 +84,7 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
       setProductLoadError('')
     })().catch(() => { if (!cancelled) setProductLoadError('无法读取需求和竞品，请重试') })
     return () => { cancelled = true }
-  }, [space.id, isProductManager, productLoadAttempt, sync.imported])
+  }, [space.id, isProductManager, productLoadAttempt])
 
   useEffect(() => {
     if (!isProductManager) return
@@ -229,9 +211,6 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
         </> : <Text role="status">正在读取账号数据…</Text>}
       </VStack>}
       {sync.rows && <>
-        {(sync.imported || sync.hasBrowserCopies) && <HStack padding={2} gap={2} hAlign="end" vAlign="center" wrap="wrap">
-          {sync.imported ? <Text type="supporting">旧数据导入完成</Text> : <Button label="导入此浏览器的旧数据" variant="ghost" size="sm" onClick={() => setImportOpen(true)} />}
-        </HStack>}
         {productWriteError && <Banner status="error" title={productWriteError} />}
         {productLoadError && <HStack padding={2} gap={2} wrap="wrap"><Banner status="error" title={productLoadError} /><Button label="重试" variant="secondary" onClick={() => setProductLoadAttempt((value) => value + 1)} /></HStack>}
         {sync.writeError && !showTodos && <Banner status="error" title={sync.writeError} />}
@@ -257,18 +236,6 @@ export default function Workspace({ space, ownerPhone, onBackToHome }: Props) {
         </section>}
       </>}
     </div>
-    {importOpen && <WorkspaceDialog title="导入此浏览器的旧数据" onClose={() => !sync.importing && setImportOpen(false)}>
-      <VStack gap={3}>
-        <Text>请在平时使用、能看到完整旧数据的浏览器里导入。已有云端数据的模块会保留当前内容。</Text>
-        {sync.writeError && <Banner status="error" title={sync.writeError} />}
-        <WorkspaceDialogActions>
-          <Button label="取消" variant="ghost" isDisabled={sync.importing} onClick={() => setImportOpen(false)} />
-          <Button label="导入旧数据" variant="primary" isLoading={sync.importing} onClick={() => {
-            void sync.importFromBrowser().then((success) => { if (success) setImportOpen(false) })
-          }} />
-        </WorkspaceDialogActions>
-      </VStack>
-    </WorkspaceDialog>}
     {todoDetail && <TodoDetailDialog todo={todoDetail} onClose={() => setTodoDetailId(null)} />}
     {summaryOpen && <SummaryWorkspace projects={projects.projects} tasks={projects.tasks} issues={projects.issues} summaries={projects.summaries} onChange={(summaries) => patchProjects((current) => ({ ...current, summaries }))} onClose={() => setSummaryOpen(false)} />}
   </div>

@@ -10,10 +10,19 @@ import { deleteLocalFilesForSpace, registerLocalFileServiceWorker, setLocalFileA
 import { supabase } from './lib/supabase'
 import { verifiedAccountPhone } from './lib/account'
 
+const ChromeRecovery = lazy(() => import('./pages/ChromeRecovery'))
 const Workspace = lazy(() => import('./pages/Workspace'))
 const loadingView = <div className="app-loading"><Spinner label="加载中…" aria-label="加载中" /></div>
 
+const recoveryKey = 'jawcat.chrome-recovery'
+
+function ticketInAddress() {
+  const ticket = new URLSearchParams(window.location.hash.slice(1)).get('restore')
+  return ticket && /^[a-f0-9]{64}$/.test(ticket) ? ticket : null
+}
+
 export default function App() {
+  const [ticket, setTicket] = useState(() => ticketInAddress() ?? sessionStorage.getItem(recoveryKey))
   const [account, setAccount] = useState<{ id: string; phone: string } | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [spacesState, setSpacesState] = useState<{ accountId: string; rows: Space[]; error?: string } | null>(null)
@@ -23,6 +32,21 @@ export default function App() {
   const phone = account?.phone
   const accountId = account?.id
   const spaces = spacesState?.accountId === accountId ? spacesState?.rows ?? [] : []
+
+  useEffect(() => {
+    const readAddress = () => {
+      const next = ticketInAddress()
+      if (next) setTicket(next)
+    }
+    window.addEventListener('hashchange', readAddress)
+    return () => window.removeEventListener('hashchange', readAddress)
+  }, [])
+
+  useEffect(() => {
+    if (!ticket) return
+    sessionStorage.setItem(recoveryKey, ticket)
+    if (ticketInAddress()) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+  }, [ticket])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -95,6 +119,13 @@ export default function App() {
     <Button label="退出登录" variant="ghost" onClick={handleLogout} />
   </div></div>
 
+  if (ticket) return <Suspense fallback={loadingView}>
+    <ChromeRecovery key={accountId + ':' + ticket} ticket={ticket} phone={phone} spaces={spaces} onClose={() => {
+      sessionStorage.removeItem(recoveryKey)
+      setTicket(null)
+    }} />
+  </Suspense>
+
   const activeSpace = spaces.find((s) => s.id === activeSpaceId)
 
   if (activeSpace) {
@@ -103,7 +134,6 @@ export default function App() {
         <Workspace
           key={`${accountId}:${activeSpace.id}`}
           space={activeSpace}
-          ownerPhone={phone}
           onBackToHome={() => setActiveSpaceId(null)}
         />
       </Suspense>

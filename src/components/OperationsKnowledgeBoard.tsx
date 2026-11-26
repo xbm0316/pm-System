@@ -217,12 +217,15 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
             startContent={<><Heading level={3} accessibilityLevel={1}>资料库</Heading><Badge label={visibleCount} variant="neutral" /></>}
             endContent={<HStack gap={2} wrap="wrap">
               <Button label="新增类型" variant="secondary" onClick={() => setTypeDraft({ id: uid(), title: '', description: '', color: columnColor('', knowledgeTypes.length) })} />
-              <Button label="新增资料" variant="primary" icon={<WorkspaceIcon name="plus" size={16} />} onClick={() => addCard(knowledgeTypes[0].id)} />
+              <Button label="新增资料" variant="primary" icon={<WorkspaceIcon name="plus" size={16} />} isDisabled={!knowledgeTypes.length} onClick={() => { if (knowledgeTypes[0]) addCard(knowledgeTypes[0].id) }} />
             </HStack>}
           />
         </LayoutHeader>}
-        content={<LayoutContent padding={0}>
-          <div className="knowledge-kanban__lanes" aria-label="资料分类看板">
+        content={<LayoutContent padding={knowledgeTypes.length ? 0 : 4}>
+          {!knowledgeTypes.length ? <EmptyState
+            icon={<Icon icon="viewColumns" size="lg" color="secondary" />}
+            title="暂无资料类型"
+          /> : <div className="knowledge-kanban__lanes" aria-label="资料分类看板">
             {knowledgeTypes.map((type, index) => {
               const cards = cardsByType.get(type.id) ?? []
               const isDropTarget = dropColumn === type.id
@@ -290,7 +293,7 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
                 </Card>
               </section>
             })}
-          </div>
+          </div>}
         </LayoutContent>}
       />
     </div>
