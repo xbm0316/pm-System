@@ -19,7 +19,7 @@ import { useSnapPaging } from '@astryxdesign/core/SnapPaging'
 import { pixel, proportional, Table, useTableStickyColumns, type TableColumn } from '@astryxdesign/core/Table'
 import { Thumbnail } from '@astryxdesign/core/Thumbnail'
 import { Tooltip } from '@astryxdesign/core/Tooltip'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Banner } from '@astryxdesign/core/Banner'
 import { useAttachmentDraft } from '../lib/useAttachmentDraft'
 import type { CSSProperties, FormEvent, ReactNode } from 'react'
@@ -258,9 +258,9 @@ function ProductThumbnail({ product }: { product: OpsProduct }) {
   )
 }
 
-function OpsModal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function OpsModal({ title, onClose, children, actions }: { title: string; onClose: () => void; children: ReactNode; actions?: ReactNode }) {
   return (
-    <WorkspaceDialog title={title} onClose={onClose} purpose="info" width={760}>
+    <WorkspaceDialog title={title} onClose={onClose} purpose="info" width={760} actions={actions}>
       {children}
     </WorkspaceDialog>
   )
@@ -309,6 +309,7 @@ function ProductImagePicker({ images, fileIds, imagePaths, onChange, attachments
 }
 
 export default function OperationsWorkspace({ state, updateState, spaceId, activeMenu, searchQuery = '' }: OperationsWorkspaceProps) {
+  const productFormId = useId()
   const productAttachments = useAttachmentDraft({ maxFiles: Number.POSITIVE_INFINITY })
   const reviewAttachments = useAttachmentDraft()
   const [productDraft, setProductDraft] = useState<OpsProduct | null>(null)
@@ -441,8 +442,12 @@ export default function OperationsWorkspace({ state, updateState, spaceId, activ
         const breakEvenRoas = contribution > 0 ? productDraft.price / contribution : 0
         const source = getSupplierLink(productDraft.supplier)
         const title = state.products.some((product) => product.id === productDraft.id) ? '编辑商品' : '添加商品'
-        return <OpsModal title={title} onClose={closeProduct}>
-          <form className="operations-product-form" onSubmit={(event) => void saveProduct(event)}>
+        return <OpsModal title={title} onClose={closeProduct} actions={<>
+          <Button label="取消" variant="ghost" type="button" isDisabled={productAttachments.saving} onClick={closeProduct} />
+          <Button label="保存商品" variant="primary" type="submit" form={productFormId} isLoading={productAttachments.saving}
+            isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} />
+        </>}>
+          <form id={productFormId} className="operations-product-form" onSubmit={(event) => void saveProduct(event)}>
             <TabList value={productTab} onChange={(tab) => setProductTab(tab === 'pricing' ? 'pricing' : 'basic')} role="tablist" hasDivider>
               <Tab value="basic" label="商品信息" panelId="ops-product-info" />
               <Tab value="pricing" label="定价与成本" panelId="ops-product-pricing" />
@@ -466,7 +471,6 @@ export default function OperationsWorkspace({ state, updateState, spaceId, activ
                 onChange={(value) => setProductDraft((draft) => draft && { ...draft, currency: value === 'USD' ? 'USD' : 'CNY' })} />
             </div><div className="operations-calculator" aria-live="polite"><div className="operations-calculator__head"><strong>利润预估</strong><a href="https://ecomwith.com/zh/tools/pricing" target="_blank" rel="noreferrer">Ecomwith 定价工具 <Icon name="link" size={11} /></a></div><div className="operations-calculator__grid"><span>贡献利润<strong>{productMoney(contribution, currency)}</strong></span><span>广告后利润<strong>{productMoney(contribution - productDraft.adCost, currency)}</strong></span><span>贡献毛利率<strong>{margin.toFixed(1)}%</strong></span><span>保本 CPA<strong>{productMoney(Math.max(contribution, 0), currency)}</strong></span><span>保本 ROAS<strong>{breakEvenRoas ? breakEvenRoas.toFixed(2) : '—'}</strong></span></div><p>贡献利润 = 售价 − 采购 − 物流 − 手续费 − 退款预留；投流成本单独计算广告后利润。<a href="https://ecomwith.com/zh/tools/break-even-roas" target="_blank" rel="noreferrer">查看公式来源</a></p></div></section>}
             {productAttachments.error && <Banner status="error" title={<>{productAttachments.error}</>} />}
-            <WorkspaceDialogActions><Button label="取消" variant="ghost" type="button" isDisabled={productAttachments.saving} onClick={closeProduct} /><Button label="保存商品" variant="primary" type="submit" isLoading={productAttachments.saving} isDisabled={!productDraft.name.trim() || (productTab === 'basic' && !productDraft.description)} /></WorkspaceDialogActions>
           </form>
         </OpsModal>
       })()}

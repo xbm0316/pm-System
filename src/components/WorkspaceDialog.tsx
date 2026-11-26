@@ -1,5 +1,5 @@
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
-import { HStack, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout'
+import { HStack, Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout'
 import type { ReactNode } from 'react'
 
 interface Props {
@@ -9,14 +9,20 @@ interface Props {
   width?: number | string
   purpose?: 'form' | 'info'
   className?: string
+  actions?: ReactNode
 }
 
-export default function WorkspaceDialog({ title, onClose, children, width = 480, purpose = 'form', className }: Props) {
+export default function WorkspaceDialog({ title, onClose, children, width = 480, purpose = 'form', className, actions }: Props) {
   const onOpenChange = (open: boolean) => { if (!open) onClose() }
+  const header = <DialogHeader title={title} onOpenChange={onOpenChange} />
+  const content = <LayoutContent label={title} className="app-dialog-content">{children}</LayoutContent>
   return (
     <Dialog isOpen onOpenChange={onOpenChange} purpose={purpose} width={width} maxHeight="90dvh" className={className}>
-      <DialogHeader title={title} onOpenChange={onOpenChange} />
-      <LayoutContent label={title} className="app-dialog-content">{children}</LayoutContent>
+      {actions ? <Layout
+        header={header}
+        content={content}
+        footer={<LayoutFooter hasDivider><HStack gap={2} hAlign="end" wrap="wrap">{actions}</HStack></LayoutFooter>}
+      /> : <>{header}{content}</>}
     </Dialog>
   )
 }
