@@ -12,6 +12,7 @@ import { StatusDot } from '@astryxdesign/core/StatusDot'
 import { Heading, Text } from '@astryxdesign/core/Text'
 import { TextArea } from '@astryxdesign/core/TextArea'
 import { TextInput } from '@astryxdesign/core/TextInput'
+import { useToast } from '@astryxdesign/core/Toast'
 import { Toolbar } from '@astryxdesign/core/Toolbar'
 import { useMemo, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { uid } from '../lib/store'
@@ -76,6 +77,7 @@ function columnColor(value: string, index: number) {
 }
 
 export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards, searchQuery, onChange }: Props) {
+  const toast = useToast()
   const [cardDraft, setCardDraft] = useState<TutorialCard | null>(null)
   const [typeDraft, setTypeDraft] = useState<TutorialType | null>(null)
   const [visiblePasswordId, setVisiblePasswordId] = useState<string | null>(null)
@@ -100,6 +102,15 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
     return groups
   }, [query, tutorialCards])
   const visibleCount = knowledgeTypes.reduce((count, type) => count + (cardsByType.get(type.id)?.length ?? 0), 0)
+
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast({ body: '链接已复制', isAutoHide: true, uniqueID: 'knowledge-copy-link' })
+    } catch {
+      toast({ type: 'error', body: '无法复制链接，请重试', isAutoHide: true, uniqueID: 'knowledge-copy-link' })
+    }
+  }
 
   function openCard(card: TutorialCard) {
     setShowDraftPassword(false)
@@ -282,7 +293,20 @@ export default function OperationsKnowledgeBoard({ knowledgeTypes, tutorialCards
                                   </div>}
                                 </VStack>}
                                 {card.url
-                                  ? <Link href={card.url} isExternalLink newTabLabel="（在新标签页打开）" type="supporting">打开资料</Link>
+                                  ? <HStack gap={1} vAlign="center">
+                                    <Link href={card.url} isExternalLink newTabLabel="（在新标签页打开）" type="supporting">打开资料</Link>
+                                    <IconButton
+                                      label={`复制资料链接 ${card.title}`}
+                                      tooltip="复制链接"
+                                      icon={<Icon icon="copy" />}
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        void copyLink(card.url)
+                                      }}
+                                    />
+                                  </HStack>
                                   : <Text type="supporting" color="secondary">未添加资料链接</Text>}
                               </VStack>
                           </ClickableCard>
